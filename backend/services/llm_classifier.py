@@ -186,7 +186,14 @@ Extract BOTH P&L and Cash Flow items:
   → management_fees (type:"expense") = PM fee amount
   → letting_fees (type:"expense") = if a letting/leasing fee is shown
   → cash_received (type:"cash_flow") = NET EFT deposit to owner's account
-  → Any other expenses paid by PM (maintenance, water, etc.) = their respective categories
+  → maintenance, repairs, cleaning etc. = their respective EXPENSE categories
+WATER/UTILITIES ON PM STATEMENTS: When a PM statement shows water or other utility
+charges deducted from rent, these are almost always TENANT REIMBURSEMENTS (the tenant
+pays the owner back for excess water usage). Classify these as:
+  → excess_bill_shares (type:"income") = water/utility recovery from tenant
+Do NOT classify water on PM statements as a "water" expense — it is income.
+Only classify water as an expense (category:"water") when it comes from a standalone
+water/utility bill issued by a water authority (e.g., Water Corporation, Sydney Water).
 IMPORTANT: Use the STATEMENT PERIOD date for rental_income and expenses.
 Use the PAYMENT/EFT date for cash_received.
 Do NOT create cash_received from the rent amount — only from actual EFT/payment lines.
@@ -202,6 +209,9 @@ MORTGAGE / LOAN STATEMENTS:
   → mortgage_interest (type:"expense") = interest portion only
   → mortgage_repayment (type:"cash_flow") = total repayment (principal + interest)
   → principal_repaid (type:"cash_flow") = principal portion
+If the document shows total repayment and interest but NOT the principal explicitly,
+calculate it: principal_repaid = mortgage_repayment − mortgage_interest.
+Always emit all three items for each period where mortgage data is available.
 
 QS / DEPRECIATION SCHEDULES:
   → depreciation (type:"expense") = Div 40 plant & equipment total

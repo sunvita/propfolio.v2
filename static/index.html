@@ -155,6 +155,8 @@
     <script>
         const API = '';
         let pendingIds = [];
+        let pendingPropId = '';
+        let pendingItems = [];   // all items from upload response, stored in-memory
         let collectedFiles = [];
 
         // ── Drop Zone & File Accumulation ────────────────────────────
@@ -286,6 +288,8 @@
                 }
 
                 pendingIds = [];
+                pendingPropId = propId;
+                pendingItems = [];
                 let totalItems = 0;
                 const allResults = data.results || [data];
 
@@ -294,34 +298,31 @@
                     statusMsg = `Processed: ${data.successful} successful, ${data.failed} failed`;
                 }
 
-                let html = '';
+                // Collect ALL items with their source filename, index for checkboxes
                 for (const result of allResults) {
                     pendingIds.push(result.pending_id);
-                    totalItems += result.items_count;
-
-                    html += `<h4 style="margin:8px 0 4px; font-size:0.85rem; color:#43474d;">${result.filename} (${result.items_count} items)</h4>`;
-                    html += '<table><tr><th>Date</th><th>Category</th><th>Amount</th><th>Type</th><th>Conf</th></tr>';
                     for (const item of result.items) {
-                        const conf = item.confidence >= 0.8 ? '&#x1f7e2;' : item.confidence >= 0.5 ? '&#x1f7e1;' : '&#x1f534;';
-                        const typeClass = item.type === 'income' ? 'badge-green' : 'badge-red';
-                        html += `<tr><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${typeClass}">${item.type}</span></td><td>${conf}</td></tr>`;
+                        item._source = result.filename;
+                        item._selected = true;
+                        pendingItems.push(item);
                     }
-                    html += '</table>';
+                    totalItems += result.items_count;
                 }
 
+                renderPendingItems();
+
                 if (data.errors && data.errors.length) {
-                    html += '<div class="status error" style="margin-top:8px;">';
-                    for (const err of data.errors) html += `${err.filename}: ${err.error}<br>`;
-                    html += '</div>';
+                    let errHtml = '<div class="status error" style="margin-top:8px;">';
+                    for (const err of data.errors) errHtml += `${err.filename}: ${err.error}<br>`;
+                    errHtml += '</div>';
+                    document.getElementById('pending-items').innerHTML += errHtml;
                 }
 
                 setProgress(100, 'Done!');
                 show('upload-status', statusMsg || `Classified ${totalItems} items from ${allResults.length} file(s)`, 'success');
-                document.getElementById('pending-items').innerHTML = html;
                 document.getElementById('btn-confirm').style.display = 'inline-block';
                 document.getElementById('btn-discard').style.display = 'inline-block';
 
-                // Clear collected files
                 collectedFiles = [];
                 renderFileList();
                 setTimeout(() => setProgress(-1), 3000);
@@ -334,38 +335,87 @@
             }
         }
 
-        async function confirmAllPending() {
-            if (!pendingIds.length) return;
-            try {
-                let totalAdded = 0, totalSkipped = 0;
-                for (const pid of pendingIds) {
-                    const res = await fetch(`${API}/api/upload/confirm/${pid}`, {method: 'POST'});
-                    const data = await res.json();
-                    totalAdded += data.added || 0;
-                    totalSkipped += data.skipped || 0;
-                }
-                show('confirm-status', `Confirmed: ${totalAdded} added, ${totalSkipped} skipped`, 'success');
-                pendingIds = [];
+        function renderPendingItems() {
+            if (!pendingItems.length) {
                 document.getElementById('pending-items').innerHTML = '';
                 document.getElementById('btn-confirm').style.display = 'none';
                 document.getElementById('btn-discard').style.display = 'none';
+                return;
+            }
+
+            // Group by source file
+            const groups = {};
+            pendingItems.forEach((item, idx) => {
+                const src = item._source || 'Unknown';
+                if (!groups[src]) groups[src] = [];
+                groups[src].push({item, idx});
+            });
+
+            let html = '';
+            const selectedCount = pendingItems.filter(i => i._selected).length;
+            html += `<div style="margin-bottom:8px; font-size:0.82rem; color:#43474d;">${selectedCount} of ${pendingItems.length} items selected &nbsp; <a href="#" onclick="toggleSelectAll(true); return false;">Select all</a> · <a href="#" onclick="toggleSelectAll(false); return false;">Deselect all</a></div>`;
+
+            for (const [src, entries] of Object.entries(groups)) {
+                const groupSelected = entries.filter(e => e.item._selected).length;
+                html += `<h4 style="margin:8px 0 4px; font-size:0.85rem; color:#43474d;">${src} (${groupSelected}/${entries.length} selected)</h4>`;
+                html += '<table><tr><th style="width:30px;"></th><th>Date</th><th>Category</th><th>Amount</th><th>Type</th><th>Conf</th></tr>';
+                for (const {item, idx} of entries) {
+                    const conf = item.confidence >= 0.8 ? '&#x1f7e2;' : item.confidence >= 0.5 ? '&#x1f7e1;' : '&#x1f534;';
+                    const typeClass = item.type === 'income' ? 'badge-green' : 'badge-red';
+                    const checked = item._selected ? 'checked' : '';
+                    const rowStyle = item._selected ? '' : 'opacity:0.45;';
+                    html += `<tr style="${rowStyle}"><td><input type="checkbox" ${checked} onchange="toggleItem(${idx})"></td><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${typeClass}">${item.type}</span></td><td>${conf}</td></tr>`;
+                }
+                html += '</table>';
+            }
+            document.getElementById('pending-items').innerHTML = html;
+        }
+
+        function toggleItem(idx) {
+            pendingItems[idx]._selected = !pendingItems[idx]._selected;
+            renderPendingItems();
+        }
+
+        function toggleSelectAll(selectAll) {
+            pendingItems.forEach(i => i._selected = selectAll);
+            renderPendingItems();
+        }
+
+        async function confirmAllPending() {
+            const selected = pendingItems.filter(i => i._selected);
+            if (!selected.length) { show('confirm-status', 'No items selected', 'error'); return; }
+
+            try {
+                // Send items directly to the new endpoint (bypasses /tmp issue)
+                const items = selected.map(i => {
+                    const copy = {...i};
+                    delete copy._source;
+                    delete copy._selected;
+                    return copy;
+                });
+
+                const res = await fetch(`${API}/api/upload/confirm-items/${pendingPropId}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({items}),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Confirm failed');
+
+                show('confirm-status', `Confirmed: ${data.added} added, ${data.skipped} duplicates skipped`, 'success');
+                pendingItems = [];
+                pendingIds = [];
+                renderPendingItems();
             } catch (e) {
                 show('confirm-status', `Error: ${e.message}`, 'error');
             }
         }
 
         async function discardAllPending() {
-            if (!pendingIds.length) return;
-            try {
-                for (const pid of pendingIds) {
-                    await fetch(`${API}/api/upload/pending/${pid}`, {method: 'DELETE'});
-                }
-                show('confirm-status', `Discarded ${pendingIds.length} batch(es)`, 'info');
-                pendingIds = [];
-                document.getElementById('pending-items').innerHTML = '';
-                document.getElementById('btn-confirm').style.display = 'none';
-                document.getElementById('btn-discard').style.display = 'none';
-            } catch(e) {}
+            pendingItems = [];
+            pendingIds = [];
+            renderPendingItems();
+            show('confirm-status', 'All pending items discarded', 'info');
         }
 
         async function loadPortfolio() {

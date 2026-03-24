@@ -11,7 +11,7 @@ from uuid import uuid4
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Body
 
 from backend.config import UPLOADS_DIR, PARSED_DIR
 from backend.models.schemas import Transaction
@@ -24,6 +24,52 @@ from backend.services.ledger import (
 from backend.services.fy_utils import get_fy
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
+
+
+def _ensure_principal_repaid(items: list[dict]) -> list[dict]:
+    """
+    Auto-calculate principal_repaid if mortgage_repayment and mortgage_interest
+    exist for a month but principal_repaid is missing.
+    """
+    # Group by month
+    by_month: dict[str, dict] = {}
+    for item in items:
+        month = item.get("month") or (item.get("date", "")[:7] if item.get("date") else None)
+        if not month:
+            continue
+        if month not in by_month:
+            by_month[month] = {"repayment": None, "interest": None, "has_principal": False}
+        cat = item.get("category", "")
+        if cat == "mortgage_repayment":
+            try:
+                by_month[month]["repayment"] = abs(float(str(item.get("amount", 0)).replace(",", "").replace("$", "")))
+            except (ValueError, TypeError):
+                pass
+        elif cat == "mortgage_interest":
+            try:
+                by_month[month]["interest"] = abs(float(str(item.get("amount", 0)).replace(",", "").replace("$", "")))
+            except (ValueError, TypeError):
+                pass
+        elif cat == "principal_repaid":
+            by_month[month]["has_principal"] = True
+
+    # Generate missing principal_repaid entries
+    new_items = list(items)
+    for month, data in by_month.items():
+        if data["repayment"] is not None and data["interest"] is not None and not data["has_principal"]:
+            principal = round(data["repayment"] - data["interest"], 2)
+            if principal > 0:
+                new_items.append({
+                    "date": f"{month}-01",
+                    "month": month,
+                    "category": "principal_repaid",
+                    "description": f"Principal repaid (calculated: repayment − interest)",
+                    "amount": principal,
+                    "type": "cash_flow",
+                    "confidence": "high",
+                })
+
+    return new_items
 
 
 def _process_single_pdf(prop, file: UploadFile) -> dict:
@@ -48,6 +94,9 @@ def _process_single_pdf(prop, file: UploadFile) -> dict:
         filename=file.filename,
         content=content,
     )
+
+    # 3b. Post-process: auto-calculate principal_repaid if missing
+    classified_items = _ensure_principal_repaid(classified_items)
 
     # 4. Convert to Transaction objects
     transactions = []
@@ -208,12 +257,41 @@ async def confirm_batch(pending_ids: List[str]):
     }
 
 
+@router.post("/confirm-items/{prop_id}")
+async def confirm_items(prop_id: str, payload: dict = Body(...)):
+    """
+    Confirm selected transaction items directly (no pending file dependency).
+
+    Accepts: { "items": [ {transaction objects} ] }
+    This bypasses /tmp file storage, fixing Vercel serverless where
+    Lambda instances don't share /tmp.
+    """
+    prop = get_property(prop_id)
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    raw_items = payload.get("items", [])
+    if not raw_items:
+        raise HTTPException(status_code=400, detail="No items provided")
+
+    transactions = [Transaction.model_validate(item) for item in raw_items]
+    result = append_transactions(prop_id, transactions)
+
+    return {
+        "status": "confirmed",
+        "property_id": prop_id,
+        "added": result["added"],
+        "skipped": result["skipped"],
+    }
+
+
 @router.delete("/pending/{pending_id}")
 async def discard_pending(pending_id: str):
     """Discard a pending upload."""
     data = load_pending(pending_id)
     if not data:
-        raise HTTPException(status_code=404, detail="Pending upload not found")
+        # On Vercel, pending files may not exist across Lambda instances
+        return {"status": "discarded", "pending_id": pending_id}
 
     delete_pending(pending_id)
     return {"status": "discarded", "pending_id": pending_id}
