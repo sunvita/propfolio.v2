@@ -307,77 +307,120 @@
             } catch(e) {}
         }
 
+        // Split files into batches that stay under Vercel's 4.5MB payload limit
+        function buildBatches(files, maxBytes = 3.5 * 1024 * 1024) {
+            const batches = [];
+            let currentBatch = [];
+            let currentSize = 0;
+            for (const f of files) {
+                // If single file exceeds limit, it gets its own batch (server will handle the error)
+                if (currentBatch.length > 0 && currentSize + f.size > maxBytes) {
+                    batches.push(currentBatch);
+                    currentBatch = [];
+                    currentSize = 0;
+                }
+                currentBatch.push(f);
+                currentSize += f.size;
+            }
+            if (currentBatch.length) batches.push(currentBatch);
+            return batches;
+        }
+
         async function uploadPdfs() {
             const propId = document.getElementById('prop-select').value;
             if (!propId) { show('upload-status', 'Select a property first', 'error'); return; }
             if (!collectedFiles.length) { show('upload-status', 'Add at least one PDF file', 'error'); return; }
 
             const totalFiles = collectedFiles.length;
+            const batches = buildBatches(collectedFiles);
             document.getElementById('btn-upload').disabled = true;
-            setProgress(5, `Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''}...`);
+            setProgress(2, `Preparing ${totalFiles} file${totalFiles > 1 ? 's' : ''} in ${batches.length} batch${batches.length > 1 ? 'es' : ''}...`);
             show('upload-status', '', 'info');
 
-            const form = new FormData();
-            for (const f of collectedFiles) form.append('files', f);
+            pendingIds = [];
+            pendingPropId = propId;
+            pendingItems = [];
+            let totalItems = 0;
+            let totalSuccessful = 0;
+            let totalFailed = 0;
+            let allErrors = [];
+            let dupCount = 0;
+            let filesProcessed = 0;
 
             try {
-                setProgress(15, `Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''} to server...`);
+                for (let b = 0; b < batches.length; b++) {
+                    const batch = batches[b];
+                    const batchLabel = batches.length > 1 ? ` (batch ${b + 1}/${batches.length})` : '';
 
-                const res = await fetch(`${API}/api/upload/${propId}`, {method: 'POST', body: form});
-                setProgress(60, 'Server is parsing & classifying with AI...');
+                    const form = new FormData();
+                    for (const f of batch) form.append('files', f);
 
-                const text = await res.text();
-                setProgress(85, 'Processing results...');
+                    setProgress(
+                        Math.round(((filesProcessed) / totalFiles) * 80) + 5,
+                        `Uploading ${batch.length} file${batch.length > 1 ? 's' : ''}${batchLabel}...`
+                    );
 
-                let data;
-                try { data = JSON.parse(text); } catch(e) { throw new Error(`Server error: ${text.substring(0, 200)}`); }
+                    const res = await fetch(`${API}/api/upload/${propId}`, {method: 'POST', body: form});
 
-                if (!res.ok) {
-                    const detail = typeof data.detail === 'string' ? data.detail : (data.detail?.message || JSON.stringify(data.detail));
-                    throw new Error(detail);
-                }
+                    setProgress(
+                        Math.round(((filesProcessed + batch.length * 0.6) / totalFiles) * 80) + 5,
+                        `Classifying with AI${batchLabel}...`
+                    );
 
-                pendingIds = [];
-                pendingPropId = propId;
-                pendingItems = [];
-                let totalItems = 0;
-                const allResults = data.results || [data];
+                    const text = await res.text();
+                    let data;
+                    try { data = JSON.parse(text); } catch(e) { throw new Error(`Server error${batchLabel}: ${text.substring(0, 200)}`); }
 
-                let statusMsg = '';
-                if (data.successful !== undefined) {
-                    statusMsg = `Processed: ${data.successful} successful, ${data.failed} failed`;
-                }
-
-                // Collect ALL items with their source filename, index for checkboxes
-                let dupCount = 0;
-                for (const result of allResults) {
-                    pendingIds.push(result.pending_id);
-                    for (const item of result.items) {
-                        item._source = result.filename;
-                        // Auto-deselect duplicates that already exist in ledger
-                        if (item.is_duplicate) {
-                            item._selected = false;
-                            dupCount++;
-                        } else {
-                            item._selected = true;
-                        }
-                        pendingItems.push(item);
+                    if (!res.ok) {
+                        const detail = typeof data.detail === 'string' ? data.detail : (data.detail?.message || JSON.stringify(data.detail));
+                        // Don't abort all batches on one failure — log and continue
+                        allErrors.push({filename: `Batch ${b + 1}`, error: detail});
+                        totalFailed += batch.length;
+                        filesProcessed += batch.length;
+                        continue;
                     }
-                    totalItems += result.items_count;
+
+                    const batchResults = data.results || [data];
+                    totalSuccessful += data.successful || batchResults.length;
+                    totalFailed += data.failed || 0;
+
+                    for (const result of batchResults) {
+                        pendingIds.push(result.pending_id);
+                        for (const item of result.items) {
+                            item._source = result.filename;
+                            if (item.is_duplicate) {
+                                item._selected = false;
+                                dupCount++;
+                            } else {
+                                item._selected = true;
+                            }
+                            pendingItems.push(item);
+                        }
+                        totalItems += result.items_count;
+                    }
+
+                    if (data.errors && data.errors.length) {
+                        allErrors.push(...data.errors);
+                    }
+
+                    filesProcessed += batch.length;
+
+                    // Render incrementally so user sees results as they come in
+                    renderPendingItems();
                 }
 
-                renderPendingItems();
-
-                if (data.errors && data.errors.length) {
+                // Show errors if any
+                if (allErrors.length) {
                     let errHtml = '<div class="status error" style="margin-top:8px;">';
-                    for (const err of data.errors) errHtml += `${err.filename}: ${err.error}<br>`;
+                    for (const err of allErrors) errHtml += `${err.filename}: ${err.error}<br>`;
                     errHtml += '</div>';
                     document.getElementById('pending-items').innerHTML += errHtml;
                 }
 
                 setProgress(100, 'Done!');
-                const dupMsg = dupCount > 0 ? ` (${dupCount} duplicate${dupCount > 1 ? 's' : ''} auto-deselected)` : '';
-                show('upload-status', (statusMsg || `Classified ${totalItems} items from ${allResults.length} file(s)`) + dupMsg, 'success');
+                const dupMsg = dupCount > 0 ? ` (${dupCount} dup${dupCount > 1 ? 's' : ''} auto-deselected)` : '';
+                const batchNote = batches.length > 1 ? ` in ${batches.length} batches` : '';
+                show('upload-status', `Classified ${totalItems} items from ${totalSuccessful} file${totalSuccessful > 1 ? 's' : ''}${batchNote}${totalFailed > 0 ? ', ' + totalFailed + ' failed' : ''}${dupMsg}`, 'success');
                 document.getElementById('btn-confirm').style.display = 'inline-block';
                 document.getElementById('btn-discard').style.display = 'inline-block';
 
@@ -388,6 +431,12 @@
             } catch (e) {
                 setProgress(-1);
                 show('upload-status', `Error: ${e.message}`, 'error');
+                // Still show any items that were collected before the error
+                if (pendingItems.length) {
+                    renderPendingItems();
+                    document.getElementById('btn-confirm').style.display = 'inline-block';
+                    document.getElementById('btn-discard').style.display = 'inline-block';
+                }
             } finally {
                 document.getElementById('btn-upload').disabled = false;
             }
