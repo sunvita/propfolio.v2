@@ -5,11 +5,13 @@ Pipeline: Upload PDF → Parse → Classify → Review → Confirm
 """
 
 import shutil
+import traceback
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime
+from typing import List
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File
 
 from backend.config import UPLOADS_DIR, PARSED_DIR
 from backend.models.schemas import Transaction
@@ -24,25 +26,9 @@ from backend.services.fy_utils import get_fy
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 
 
-@router.post("/{prop_id}")
-async def upload_pdf(prop_id: str, file: UploadFile = File(...)):
-    """
-    Upload a single PDF for a property.
-
-    Steps:
-    1. Save file to uploads/{prop_id}/
-    2. Parse with opendataloader-pdf
-    3. Classify with LLM
-    4. Store as pending (user must review + confirm)
-
-    Returns pending_id and classified items for the review screen.
-    """
-    prop = get_property(prop_id)
-    if not prop:
-        raise HTTPException(status_code=404, detail="Property not found")
-
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files accepted")
+def _process_single_pdf(prop, file: UploadFile) -> dict:
+    """Process one PDF file through the parse → classify → pending pipeline."""
+    prop_id = prop.id
 
     # 1. Save uploaded file
     upload_dir = Path(UPLOADS_DIR) / prop_id
@@ -63,7 +49,7 @@ async def upload_pdf(prop_id: str, file: UploadFile = File(...)):
         content=content,
     )
 
-    # 4. Convert to Transaction objects for pending storage
+    # 4. Convert to Transaction objects
     transactions = []
     for item in classified_items:
         date_str = item.get("date")
@@ -99,7 +85,7 @@ async def upload_pdf(prop_id: str, file: UploadFile = File(...)):
             fy=get_fy(dt),
             category=item.get("category", "miscellaneous"),
             description=item.get("description", ""),
-            amount=abs(amount),
+            amount=abs(float(amount)),
             type=item.get("type", "expense"),
             source_pdf=file.filename,
             confidence=conf,
@@ -117,6 +103,55 @@ async def upload_pdf(prop_id: str, file: UploadFile = File(...)):
     }
 
 
+@router.post("/{prop_id}")
+async def upload_pdfs(prop_id: str, files: List[UploadFile] = File(...)):
+    """
+    Upload one or more PDFs for a property.
+
+    Accepts multiple files. Each is parsed, classified, and stored as
+    a separate pending batch for review.
+
+    Returns a list of results, one per file.
+    """
+    prop = get_property(prop_id)
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    results = []
+    errors = []
+
+    for file in files:
+        if not file.filename.lower().endswith(".pdf"):
+            errors.append({"filename": file.filename, "error": "Not a PDF file"})
+            continue
+
+        try:
+            result = _process_single_pdf(prop, file)
+            results.append(result)
+        except Exception as e:
+            print(f"Error processing {file.filename}: {traceback.format_exc()}")
+            errors.append({"filename": file.filename, "error": str(e)})
+
+    if not results and errors:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "All files failed to process",
+                "errors": errors,
+            }
+        )
+
+    return {
+        "results": results,
+        "errors": errors,
+        "total_files": len(results) + len(errors),
+        "successful": len(results),
+        "failed": len(errors),
+        # Backwards compat: if single file, also expose top-level fields
+        **(results[0] if len(results) == 1 else {}),
+    }
+
+
 @router.get("/pending/{pending_id}")
 async def get_pending(pending_id: str):
     """Retrieve a pending upload for review."""
@@ -128,11 +163,7 @@ async def get_pending(pending_id: str):
 
 @router.post("/confirm/{pending_id}")
 async def confirm_pending(pending_id: str):
-    """
-    Confirm a pending upload — move items from pending to the property ledger.
-
-    Runs deduplication check automatically.
-    """
+    """Confirm a pending upload — move items to the property ledger."""
     data = load_pending(pending_id)
     if not data:
         raise HTTPException(status_code=404, detail="Pending upload not found")
@@ -141,8 +172,6 @@ async def confirm_pending(pending_id: str):
     items = [Transaction.model_validate(item) for item in data["items"]]
 
     result = append_transactions(prop_id, items)
-
-    # Clean up pending file
     delete_pending(pending_id)
 
     return {
@@ -153,9 +182,35 @@ async def confirm_pending(pending_id: str):
     }
 
 
+@router.post("/confirm-batch")
+async def confirm_batch(pending_ids: List[str]):
+    """Confirm multiple pending uploads at once."""
+    total_added = 0
+    total_skipped = 0
+    confirmed = []
+
+    for pid in pending_ids:
+        data = load_pending(pid)
+        if not data:
+            continue
+        items = [Transaction.model_validate(item) for item in data["items"]]
+        result = append_transactions(data["prop_id"], items)
+        delete_pending(pid)
+        total_added += result["added"]
+        total_skipped += result["skipped"]
+        confirmed.append(pid)
+
+    return {
+        "status": "confirmed",
+        "confirmed_count": len(confirmed),
+        "added": total_added,
+        "skipped": total_skipped,
+    }
+
+
 @router.delete("/pending/{pending_id}")
 async def discard_pending(pending_id: str):
-    """Discard a pending upload (user chose not to confirm)."""
+    """Discard a pending upload."""
     data = load_pending(pending_id)
     if not data:
         raise HTTPException(status_code=404, detail="Pending upload not found")

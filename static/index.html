@@ -28,12 +28,17 @@
         .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
         .badge-green { background: #9ff5c1; color: #0a6c44; }
         .badge-red { background: #ffcdd2; color: #b71c1c; }
-        .pill { display: inline-block; margin: 2px; padding: 4px 8px; background: #ebeef0; border-radius: 6px; font-size: 0.8rem; }
+        .file-count { font-size: 0.8rem; color: #43474d; margin-bottom: 8px; }
+        /* Google Places autocomplete dropdown styling */
+        .pac-container { border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: 'Inter', sans-serif; z-index: 10000; }
+        .pac-item { padding: 8px 12px; font-size: 0.85rem; cursor: pointer; }
+        .pac-item:hover { background: #ebf3fb; }
+        .pac-icon { display: none; }
     </style>
 </head>
 <body>
     <h1>Propfolio AU</h1>
-    <p style="color:#43474d; margin-bottom: 20px;">Test console for the MVP backend. <a href="/docs" style="color:#0a6c44;">Swagger UI →</a></p>
+    <p style="color:#43474d; margin-bottom: 20px;">Test console for the MVP backend. <a href="/docs" style="color:#0a6c44;">Swagger UI &rarr;</a></p>
 
     <div class="grid">
         <!-- Left Column -->
@@ -41,13 +46,13 @@
             <h2>1. Create Property</h2>
             <div class="card">
                 <label>Short Name</label>
-                <input type="text" id="prop-name" value="12 OHC" />
+                <input type="text" id="prop-name" placeholder="e.g. 12 OHC" />
                 <label>Address</label>
-                <input type="text" id="prop-address" value="12 Ocean Heights Ct, Burleigh QLD 4220" />
+                <input type="text" id="prop-address" placeholder="Start typing an Australian address..." autocomplete="off" />
                 <label>Purchase Price ($)</label>
-                <input type="number" id="prop-price" value="750000" />
+                <input type="number" id="prop-price" placeholder="750000" />
                 <label>Current Value ($)</label>
-                <input type="number" id="prop-value" value="820000" />
+                <input type="number" id="prop-value" placeholder="820000" />
                 <button onclick="createProperty()">Create Property</button>
                 <div id="prop-status"></div>
             </div>
@@ -56,9 +61,10 @@
             <div class="card">
                 <label>Property</label>
                 <select id="prop-select"><option value="">— loading —</option></select>
-                <label>PDF File</label>
-                <input type="file" id="pdf-file" accept=".pdf" />
-                <button onclick="uploadPdf()">Upload & Classify</button>
+                <label>PDF Files (select one or more)</label>
+                <input type="file" id="pdf-file" accept=".pdf" multiple />
+                <div id="file-count" class="file-count"></div>
+                <button onclick="uploadPdfs()">Upload & Classify</button>
                 <div id="upload-status"></div>
             </div>
 
@@ -66,8 +72,8 @@
             <div class="card">
                 <div id="pending-items"></div>
                 <div style="margin-top: 8px;">
-                    <button class="secondary" onclick="confirmPending()" id="btn-confirm" style="display:none;">Confirm All</button>
-                    <button class="danger" onclick="discardPending()" id="btn-discard" style="display:none;">Discard</button>
+                    <button class="secondary" onclick="confirmAllPending()" id="btn-confirm" style="display:none;">Confirm All</button>
+                    <button class="danger" onclick="discardAllPending()" id="btn-discard" style="display:none;">Discard All</button>
                 </div>
                 <div id="confirm-status"></div>
             </div>
@@ -83,7 +89,7 @@
 
             <h2>5. Generate Excel Report</h2>
             <div class="card">
-                <button class="secondary" onclick="generateReport()">Generate P&L Workbook</button>
+                <button class="secondary" onclick="generateReport()">Generate P&amp;L Workbook</button>
                 <div id="report-status"></div>
             </div>
 
@@ -97,9 +103,39 @@
         </div>
     </div>
 
+    <!-- Google Places Autocomplete -->
+    <script>
+        function initGooglePlaces() {
+            const input = document.getElementById('prop-address');
+            const autocomplete = new google.maps.places.Autocomplete(input, {
+                types: ['address'],
+                componentRestrictions: { country: 'au' },
+                fields: ['formatted_address', 'address_components', 'geometry'],
+            });
+
+            autocomplete.addListener('place_changed', function () {
+                const place = autocomplete.getPlace();
+                if (place.formatted_address) {
+                    input.value = place.formatted_address;
+                }
+            });
+        }
+    </script>
+    <script
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjvd2oEOZvYfoVddUXFOZeJHPAQc01_bE&libraries=places&callback=initGooglePlaces"
+        async defer>
+    </script>
+
     <script>
         const API = '';
-        let currentPendingId = null;
+        let pendingIds = [];
+
+        // File input counter
+        document.getElementById('pdf-file').addEventListener('change', function() {
+            const count = this.files.length;
+            document.getElementById('file-count').textContent =
+                count > 0 ? `${count} file${count > 1 ? 's' : ''} selected` : '';
+        });
 
         async function createProperty() {
             const body = {
@@ -108,14 +144,24 @@
                 purchase_price: parseFloat(document.getElementById('prop-price').value) || null,
                 current_value: parseFloat(document.getElementById('prop-value').value) || null,
             };
+            if (!body.short_name || !body.address) {
+                show('prop-status', 'Short name and address are required', 'error');
+                return;
+            }
             try {
                 const res = await fetch(`${API}/api/properties/`, {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(body),
                 });
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Failed');
                 show('prop-status', `Created: ${data.display_name} (${data.id})`, 'success');
                 refreshPropertySelects();
+                // Clear form
+                document.getElementById('prop-name').value = '';
+                document.getElementById('prop-address').value = '';
+                document.getElementById('prop-price').value = '';
+                document.getElementById('prop-value').value = '';
             } catch (e) {
                 show('prop-status', `Error: ${e.message}`, 'error');
             }
@@ -131,47 +177,101 @@
             } catch(e) {}
         }
 
-        async function uploadPdf() {
+        async function uploadPdfs() {
             const propId = document.getElementById('prop-select').value;
             const fileInput = document.getElementById('pdf-file');
-            if (!propId || !fileInput.files.length) {
-                show('upload-status', 'Select a property and PDF file', 'error');
+            if (!propId) {
+                show('upload-status', 'Select a property first', 'error');
                 return;
             }
-            const form = new FormData();
-            form.append('file', fileInput.files[0]);
+            if (!fileInput.files.length) {
+                show('upload-status', 'Select at least one PDF file', 'error');
+                return;
+            }
 
-            show('upload-status', 'Uploading & classifying...', 'info');
+            const fileCount = fileInput.files.length;
+            show('upload-status', `Uploading & classifying ${fileCount} file${fileCount > 1 ? 's' : ''}...`, 'info');
+
+            const form = new FormData();
+            for (let i = 0; i < fileInput.files.length; i++) {
+                form.append('files', fileInput.files[i]);
+            }
+
             try {
                 const res = await fetch(`${API}/api/upload/${propId}`, {method: 'POST', body: form});
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Upload failed');
+                const text = await res.text();
 
-                currentPendingId = data.pending_id;
-                show('upload-status', `Classified ${data.items_count} items from ${data.filename}`, 'success');
-
-                // Show items table
-                let html = '<table><tr><th>Date</th><th>Category</th><th>Amount</th><th>Type</th><th>Conf</th></tr>';
-                for (const item of data.items) {
-                    const conf = item.confidence >= 0.8 ? '🟢' : item.confidence >= 0.5 ? '🟡' : '🔴';
-                    html += `<tr><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${item.type === 'income' ? 'badge-green' : 'badge-red'}">${item.type}</span></td><td>${conf}</td></tr>`;
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch(e) {
+                    throw new Error(`Server error: ${text.substring(0, 200)}`);
                 }
-                html += '</table>';
+
+                if (!res.ok) {
+                    const detail = typeof data.detail === 'string' ? data.detail :
+                        (data.detail?.message || JSON.stringify(data.detail));
+                    throw new Error(detail);
+                }
+
+                // Collect pending IDs from all results
+                pendingIds = [];
+                let totalItems = 0;
+                const allResults = data.results || [data];
+
+                let statusMsg = '';
+                if (data.successful !== undefined) {
+                    statusMsg = `Processed: ${data.successful} successful, ${data.failed} failed`;
+                }
+
+                let html = '';
+                for (const result of allResults) {
+                    pendingIds.push(result.pending_id);
+                    totalItems += result.items_count;
+
+                    html += `<h4 style="margin:8px 0 4px; font-size:0.85rem; color:#43474d;">${result.filename} (${result.items_count} items)</h4>`;
+                    html += '<table><tr><th>Date</th><th>Category</th><th>Amount</th><th>Type</th><th>Conf</th></tr>';
+                    for (const item of result.items) {
+                        const conf = item.confidence >= 0.8 ? '&#x1f7e2;' : item.confidence >= 0.5 ? '&#x1f7e1;' : '&#x1f534;';
+                        html += `<tr><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${item.type === 'income' ? 'badge-green' : 'badge-red'}">${item.type}</span></td><td>${conf}</td></tr>`;
+                    }
+                    html += '</table>';
+                }
+
+                // Show errors if any
+                if (data.errors && data.errors.length) {
+                    html += '<div class="status error" style="margin-top:8px;">';
+                    for (const err of data.errors) {
+                        html += `${err.filename}: ${err.error}<br>`;
+                    }
+                    html += '</div>';
+                }
+
+                show('upload-status', statusMsg || `Classified ${totalItems} items from ${allResults.length} file(s)`, 'success');
                 document.getElementById('pending-items').innerHTML = html;
                 document.getElementById('btn-confirm').style.display = 'inline-block';
                 document.getElementById('btn-discard').style.display = 'inline-block';
+                fileInput.value = '';
+                document.getElementById('file-count').textContent = '';
+
             } catch (e) {
                 show('upload-status', `Error: ${e.message}`, 'error');
             }
         }
 
-        async function confirmPending() {
-            if (!currentPendingId) return;
+        async function confirmAllPending() {
+            if (!pendingIds.length) return;
             try {
-                const res = await fetch(`${API}/api/upload/confirm/${currentPendingId}`, {method: 'POST'});
-                const data = await res.json();
-                show('confirm-status', `Confirmed: ${data.added} added, ${data.skipped} skipped`, 'success');
-                currentPendingId = null;
+                let totalAdded = 0, totalSkipped = 0;
+                for (const pid of pendingIds) {
+                    const res = await fetch(`${API}/api/upload/confirm/${pid}`, {method: 'POST'});
+                    const data = await res.json();
+                    totalAdded += data.added || 0;
+                    totalSkipped += data.skipped || 0;
+                }
+                show('confirm-status', `Confirmed: ${totalAdded} added, ${totalSkipped} skipped`, 'success');
+                pendingIds = [];
+                document.getElementById('pending-items').innerHTML = '';
                 document.getElementById('btn-confirm').style.display = 'none';
                 document.getElementById('btn-discard').style.display = 'none';
             } catch (e) {
@@ -179,12 +279,14 @@
             }
         }
 
-        async function discardPending() {
-            if (!currentPendingId) return;
+        async function discardAllPending() {
+            if (!pendingIds.length) return;
             try {
-                await fetch(`${API}/api/upload/pending/${currentPendingId}`, {method: 'DELETE'});
-                show('confirm-status', 'Discarded', 'info');
-                currentPendingId = null;
+                for (const pid of pendingIds) {
+                    await fetch(`${API}/api/upload/pending/${pid}`, {method: 'DELETE'});
+                }
+                show('confirm-status', `Discarded ${pendingIds.length} batch(es)`, 'info');
+                pendingIds = [];
                 document.getElementById('pending-items').innerHTML = '';
                 document.getElementById('btn-confirm').style.display = 'none';
                 document.getElementById('btn-discard').style.display = 'none';
@@ -215,8 +317,10 @@
             try {
                 const res = await fetch(`${API}/api/reports/generate`);
                 if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.detail || 'Generation failed');
+                    const text = await res.text();
+                    let msg;
+                    try { msg = JSON.parse(text).detail; } catch(e) { msg = text.substring(0, 200); }
+                    throw new Error(msg || 'Generation failed');
                 }
                 const blob = await res.blob();
                 const url = URL.createObjectURL(blob);
@@ -236,10 +340,11 @@
             try {
                 const res = await fetch(`${API}/api/properties/${propId}/summary`);
                 const d = await res.json();
+                if (!res.ok) throw new Error(d.detail || 'Failed');
                 const gearingClass = d.net_profit >= 0 ? 'success' : 'error';
                 document.getElementById('summary-view').innerHTML = `
                     <div class="status ${gearingClass}" style="margin-bottom:8px; font-weight:600;">
-                        ${d.gearing} — ${d.gearing_detail}
+                        ${d.gearing} &mdash; ${d.gearing_detail}
                     </div>
                     <table>
                         <tr><td>FY</td><td>${d.fy}</td></tr>
