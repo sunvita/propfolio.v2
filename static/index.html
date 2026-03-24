@@ -73,7 +73,7 @@
                     </div>
                     <div>
                         <label>Purchase Date</label>
-                        <input type="month" id="prop-purchase-date" />
+                        <input type="text" id="prop-purchase-date" placeholder="e.g. 2019-07" onfocus="this.type='month'" onblur="if(!this.value)this.type='text'" />
                     </div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
@@ -83,7 +83,7 @@
                     </div>
                     <div>
                         <label>Valued As Of</label>
-                        <input type="month" id="prop-value-date" />
+                        <input type="text" id="prop-value-date" placeholder="e.g. 2025-03" onfocus="this.type='month'" onblur="if(!this.value)this.type='text'" />
                     </div>
                 </div>
                 <div id="prop-form-buttons">
@@ -278,9 +278,9 @@
                 document.getElementById('prop-name').value = '';
                 document.getElementById('prop-address').value = '';
                 document.getElementById('prop-price').value = '';
-                document.getElementById('prop-purchase-date').value = '';
+                document.getElementById('prop-purchase-date').value = ''; document.getElementById('prop-purchase-date').type = 'text';
                 document.getElementById('prop-value').value = '';
-                document.getElementById('prop-value-date').value = '';
+                document.getElementById('prop-value-date').value = ''; document.getElementById('prop-value-date').type = 'text';
             } catch (e) {
                 show('prop-status', `Error: ${e.message}`, 'error');
             }
@@ -295,9 +295,9 @@
                     document.getElementById('prop-name').value = prop.short_name || '';
                     document.getElementById('prop-address').value = prop.address || '';
                     document.getElementById('prop-price').value = prop.purchase_price || '';
-                    document.getElementById('prop-purchase-date').value = prop.purchase_date || '';
+                    document.getElementById('prop-purchase-date').type = 'month'; document.getElementById('prop-purchase-date').value = prop.purchase_date || '';
                     document.getElementById('prop-value').value = prop.current_value || '';
-                    document.getElementById('prop-value-date').value = prop.current_value_date || '';
+                    document.getElementById('prop-value-date').type = 'month'; document.getElementById('prop-value-date').value = prop.current_value_date || '';
                     document.getElementById('prop-form-title').textContent = `Edit Property — ${prop.display_name}`;
                     document.getElementById('btn-save-prop').textContent = 'Save Changes';
                     document.getElementById('btn-cancel-edit').style.display = 'inline-block';
@@ -312,9 +312,9 @@
             document.getElementById('prop-name').value = '';
             document.getElementById('prop-address').value = '';
             document.getElementById('prop-price').value = '';
-            document.getElementById('prop-purchase-date').value = '';
+            document.getElementById('prop-purchase-date').value = ''; document.getElementById('prop-purchase-date').type = 'text';
             document.getElementById('prop-value').value = '';
-            document.getElementById('prop-value-date').value = '';
+            document.getElementById('prop-value-date').value = ''; document.getElementById('prop-value-date').type = 'text';
             document.getElementById('prop-form-title').textContent = '1. Create Property';
             document.getElementById('btn-save-prop').textContent = 'Create Property';
             document.getElementById('btn-cancel-edit').style.display = 'none';
