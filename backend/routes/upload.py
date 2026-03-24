@@ -19,7 +19,7 @@ from backend.services.pdf_parser import parse_pdf
 from backend.services.llm_classifier import classify_pdf_content
 from backend.services.ledger import (
     get_property, save_pending, load_pending, delete_pending,
-    append_transactions,
+    append_transactions, load_ledger,
 )
 from backend.services.fy_utils import get_fy
 
@@ -141,14 +141,30 @@ def _process_single_pdf(prop, file: UploadFile) -> dict:
         )
         transactions.append(tx)
 
-    # 5. Save as pending
+    # 5. Check for duplicates against existing ledger (same hash logic as append_transactions)
+    import hashlib
+    existing_ledger = load_ledger(prop_id)
+    existing_hashes = set()
+    for etx in existing_ledger.transactions:
+        key = f"{etx.date}|{etx.category}|{etx.amount}|{etx.description[:50]}"
+        existing_hashes.add(hashlib.sha256(key.encode()).hexdigest())
+
+    items_out = []
+    for t in transactions:
+        item_dict = t.model_dump(mode="json")
+        key = f"{t.date}|{t.category}|{t.amount}|{t.description[:50]}"
+        tx_hash = hashlib.sha256(key.encode()).hexdigest()
+        item_dict["is_duplicate"] = tx_hash in existing_hashes
+        items_out.append(item_dict)
+
+    # 6. Save as pending
     pending_id = save_pending(prop_id, file.filename, transactions)
 
     return {
         "pending_id": pending_id,
         "filename": file.filename,
         "items_count": len(transactions),
-        "items": [t.model_dump(mode="json") for t in transactions],
+        "items": items_out,
     }
 
 

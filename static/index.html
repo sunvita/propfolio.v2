@@ -349,11 +349,18 @@
                 }
 
                 // Collect ALL items with their source filename, index for checkboxes
+                let dupCount = 0;
                 for (const result of allResults) {
                     pendingIds.push(result.pending_id);
                     for (const item of result.items) {
                         item._source = result.filename;
-                        item._selected = true;
+                        // Auto-deselect duplicates that already exist in ledger
+                        if (item.is_duplicate) {
+                            item._selected = false;
+                            dupCount++;
+                        } else {
+                            item._selected = true;
+                        }
                         pendingItems.push(item);
                     }
                     totalItems += result.items_count;
@@ -369,7 +376,8 @@
                 }
 
                 setProgress(100, 'Done!');
-                show('upload-status', statusMsg || `Classified ${totalItems} items from ${allResults.length} file(s)`, 'success');
+                const dupMsg = dupCount > 0 ? ` (${dupCount} duplicate${dupCount > 1 ? 's' : ''} auto-deselected)` : '';
+                show('upload-status', (statusMsg || `Classified ${totalItems} items from ${allResults.length} file(s)`) + dupMsg, 'success');
                 document.getElementById('btn-confirm').style.display = 'inline-block';
                 document.getElementById('btn-discard').style.display = 'inline-block';
 
@@ -403,7 +411,9 @@
 
             let html = '';
             const selectedCount = pendingItems.filter(i => i._selected).length;
-            html += `<div style="margin-bottom:8px; font-size:0.82rem; color:#43474d;">${selectedCount} of ${pendingItems.length} items selected &nbsp; <a href="#" onclick="toggleSelectAll(true); return false;">Select all</a> · <a href="#" onclick="toggleSelectAll(false); return false;">Deselect all</a></div>`;
+            const dupCount = pendingItems.filter(i => i.is_duplicate).length;
+            const dupNote = dupCount > 0 ? ` · <span style="color:#ba1a1a;">${dupCount} duplicate${dupCount > 1 ? 's' : ''} already in ledger</span>` : '';
+            html += `<div style="margin-bottom:8px; font-size:0.82rem; color:#43474d;">${selectedCount} of ${pendingItems.length} items selected${dupNote} &nbsp; <a href="#" onclick="toggleSelectAll(true); return false;">Select all</a> · <a href="#" onclick="toggleSelectAll(false); return false;">Deselect all</a> · <a href="#" onclick="toggleSelectAll(true, true); return false;">Select new only</a></div>`;
 
             for (const [src, entries] of Object.entries(groups)) {
                 const groupSelected = entries.filter(e => e.item._selected).length;
@@ -414,7 +424,8 @@
                     const typeClass = item.type === 'income' ? 'badge-green' : 'badge-red';
                     const checked = item._selected ? 'checked' : '';
                     const rowStyle = item._selected ? '' : 'opacity:0.45;';
-                    html += `<tr style="${rowStyle}"><td><input type="checkbox" ${checked} onchange="toggleItem(${idx})"></td><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${typeClass}">${item.type}</span></td><td>${conf}</td></tr>`;
+                    const dupBadge = item.is_duplicate ? ' <span class="badge badge-red" style="font-size:0.7rem;">DUP</span>' : '';
+                    html += `<tr style="${rowStyle}"><td><input type="checkbox" ${checked} onchange="toggleItem(${idx})"></td><td>${item.month || item.date}</td><td>${item.category}${dupBadge}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${typeClass}">${item.type}</span></td><td>${conf}</td></tr>`;
                 }
                 html += '</table>';
             }
@@ -426,8 +437,15 @@
             renderPendingItems();
         }
 
-        function toggleSelectAll(selectAll) {
-            pendingItems.forEach(i => i._selected = selectAll);
+        function toggleSelectAll(selectAll, newOnly = false) {
+            pendingItems.forEach(i => {
+                if (newOnly) {
+                    // Select new only: select non-duplicates, deselect duplicates
+                    i._selected = !i.is_duplicate;
+                } else {
+                    i._selected = selectAll;
+                }
+            });
             renderPendingItems();
         }
 
