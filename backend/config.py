@@ -88,6 +88,11 @@ CASHFLOW_ROWS = {
 NET_CASHFLOW_ROW = 53   # "Net Cash Flow"
 PRINCIPAL_ROW = 54      # "Principal Repaid"
 
+# Principal is a memo row (not summed into Net Cash Flow), but tracked for summary/reporting
+PRINCIPAL_ROWS = {
+    "principal_repaid": (PRINCIPAL_ROW, "Principal Repaid"),
+}
+
 KPI_HEADER_ROW = 57
 KPI_START_ROW = 58
 
@@ -103,7 +108,7 @@ SECTION_HEADERS = {
 
 # ── Category → Row lookup (flat) ────────────────────────────────────
 CATEGORY_ROW_MAP = {}
-for d in [INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS, CASHFLOW_ROWS]:
+for d in [INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS, CASHFLOW_ROWS, PRINCIPAL_ROWS]:
     for key, (row, _) in d.items():
         CATEGORY_ROW_MAP[key] = row
 

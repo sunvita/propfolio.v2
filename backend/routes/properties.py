@@ -54,7 +54,7 @@ async def get_property_summary(prop_id: str):
     from backend.services.ledger import aggregate_by_category_month
     from backend.config import (
         INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS,
-        CASHFLOW_ROWS,
+        CASHFLOW_ROWS, PRINCIPAL_ROWS,
     )
     from backend.services.fy_utils import get_fy_year_range, get_fy_months
 
@@ -106,25 +106,19 @@ async def get_property_summary(prop_id: str):
         gearing = "Neutral"
         gearing_detail = "Break Even"
 
+    principal_breakdown = _category_totals(PRINCIPAL_ROWS)
+
     # Category display name lookup
-    all_rows = {**INCOME_ROWS, **OPEX_ROWS, **UTILITY_ROWS, **FINANCING_ROWS, **CAPITAL_ROWS, **CASHFLOW_ROWS}
+    all_rows = {**INCOME_ROWS, **OPEX_ROWS, **UTILITY_ROWS, **FINANCING_ROWS,
+                **CAPITAL_ROWS, **CASHFLOW_ROWS, **PRINCIPAL_ROWS}
     def _with_labels(breakdown: dict) -> list[dict]:
         return [
             {"key": k, "label": all_rows.get(k, (0, k))[1], "amount": v}
             for k, v in breakdown.items()
         ]
 
-    # Also compute principal_repaid from ledger directly (may be in cash flow)
-    from backend.services.ledger import load_ledger as _load_ledger
-    ledger = _load_ledger(prop_id)
-    principal_total = 0.0
-    for tx in ledger.transactions:
-        if tx.category == "principal_repaid":
-            tx_date = tx.date if isinstance(tx.date, str) else tx.date.isoformat()
-            tx_month = tx_date[:7]
-            tx_fy = get_fy(tx.date)
-            if tx_fy == current_fy:
-                principal_total += abs(tx.amount)
+    # Combine cashflow + principal for the full cash flow display
+    full_cashflow = {**cashflow_breakdown, **principal_breakdown}
 
     return {
         "property": prop,
@@ -143,7 +137,6 @@ async def get_property_summary(prop_id: str):
         "net_profit": net_profit,
         "gearing": gearing,
         "gearing_detail": gearing_detail,
-        "cashflow": cashflow_breakdown,
-        "cashflow_breakdown": _with_labels(cashflow_breakdown),
-        "principal_repaid": round(principal_total, 2),
+        "cashflow_breakdown": _with_labels(full_cashflow),
+        "principal_repaid": round(sum(principal_breakdown.values()), 2),
     }
