@@ -44,7 +44,17 @@ app.include_router(reports.router)
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "app": "Propfolio AU", "version": "0.1.0"}
+    import os
+    has_key = bool(os.getenv("ANTHROPIC_API_KEY"))
+    key_prefix = os.getenv("ANTHROPIC_API_KEY", "")[:7] if has_key else None
+    return {
+        "status": "ok",
+        "app": "Propfolio AU",
+        "version": "0.1.0",
+        "anthropic_key_set": has_key,
+        "key_prefix": key_prefix,
+        "env_vercel": bool(os.getenv("VERCEL")),
+    }
 
 
 @app.get("/api/portfolio")
