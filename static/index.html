@@ -387,14 +387,19 @@
             show('prop-status', '', 'info');
         }
 
+        function updatePropertySelects(properties) {
+            const opts = properties.map(p => `<option value="${p.id}">${p.display_name}</option>`).join('');
+            document.getElementById('prop-select').innerHTML = opts || '<option>No properties</option>';
+            document.getElementById('summary-prop').innerHTML = opts || '<option>No properties</option>';
+            document.getElementById('tx-prop').innerHTML = opts || '<option>No properties</option>';
+        }
+
         async function refreshPropertySelects() {
+            // Uses the single /api/portfolio endpoint to avoid Vercel /tmp isolation
             try {
-                const res = await fetch(`${API}/api/properties/`);
-                const props = await res.json();
-                const opts = props.map(p => `<option value="${p.id}">${p.display_name}</option>`).join('');
-                document.getElementById('prop-select').innerHTML = opts || '<option>No properties</option>';
-                document.getElementById('summary-prop').innerHTML = opts || '<option>No properties</option>';
-                document.getElementById('tx-prop').innerHTML = opts || '<option>No properties</option>';
+                const res = await fetch(`${API}/api/portfolio`);
+                const data = await res.json();
+                updatePropertySelects(data.properties || []);
             } catch(e) {}
         }
 
@@ -641,55 +646,49 @@
             show('confirm-status', 'All pending items discarded', 'info');
         }
 
-        async function loadPortfolioFyList() {
-            try {
-                const res = await fetch(`${API}/api/portfolio/fy-list`);
-                const fyList = await res.json();
-                const sel = document.getElementById('portfolio-fy');
-                const current = sel.value;
-                sel.innerHTML = '<option value="">Current FY</option>' +
-                    fyList.map(fy => `<option value="${fy}" ${fy === current ? 'selected' : ''}>${fy}</option>`).join('');
-            } catch(e) {}
-        }
-
         async function loadPortfolio() {
             const fmt = v => '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
             const fmt2 = v => '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             const selectedFy = document.getElementById('portfolio-fy').value;
             const fyParam = selectedFy ? `?fy=${encodeURIComponent(selectedFy)}` : '';
             try {
-                // Fetch portfolio data, summary, and FY list in parallel — render once all arrive
-                const [portRes, sumRes] = await Promise.all([
-                    fetch(`${API}/api/portfolio`),
-                    fetch(`${API}/api/portfolio/summary${fyParam}`),
-                ]);
-                loadPortfolioFyList();
-                const data = await portRes.json();
-                const summary = sumRes.ok ? await sumRes.json() : null;
+                // Single API call — properties + summary + FY list all from one Lambda
+                const res = await fetch(`${API}/api/portfolio${fyParam}`);
+                const data = await res.json();
+
+                // Update all property dropdowns from the same response
+                updatePropertySelects(data.properties || []);
+
+                // Update FY dropdown
+                const fyList = data.fy_list || [];
+                const fySel = document.getElementById('portfolio-fy');
+                const currentFy = fySel.value;
+                fySel.innerHTML = '<option value="">Current FY</option>' +
+                    fyList.map(fy => `<option value="${fy}" ${fy === currentFy ? 'selected' : ''}>${fy}</option>`).join('');
 
                 let html = '';
 
                 // KPI cards
-                if (summary && summary.property_count > 0) {
-                    const profitColor = summary.total_net_profit >= 0 ? '#0a6c44' : '#ba1a1a';
-                    const profitLabel = summary.total_net_profit >= 0 ? 'Net Profit' : 'Net Loss';
+                if (data.property_count > 0) {
+                    const profitColor = data.total_net_profit >= 0 ? '#0a6c44' : '#ba1a1a';
+                    const profitLabel = data.total_net_profit >= 0 ? 'Net Profit' : 'Net Loss';
                     html += `
                         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px,1fr)); gap:8px; margin-bottom:12px;">
                             <div style="background:#f1f4f6; border-radius:8px; padding:10px; text-align:center;">
                                 <div style="font-size:0.72rem; color:#74777e; text-transform:uppercase;">Total Assets</div>
-                                <div style="font-size:1.1rem; font-weight:700; color:#00152a;">${fmt(summary.total_asset_value)}</div>
+                                <div style="font-size:1.1rem; font-weight:700; color:#00152a;">${fmt(data.total_asset_value)}</div>
                             </div>
                             <div style="background:#f1f4f6; border-radius:8px; padding:10px; text-align:center;">
                                 <div style="font-size:0.72rem; color:#74777e; text-transform:uppercase;">Total Debt</div>
-                                <div style="font-size:1.1rem; font-weight:700; color:#ba1a1a;">${fmt(summary.total_debt)}</div>
+                                <div style="font-size:1.1rem; font-weight:700; color:#ba1a1a;">${fmt(data.total_debt)}</div>
                             </div>
                             <div style="background:#f1f4f6; border-radius:8px; padding:10px; text-align:center;">
                                 <div style="font-size:0.72rem; color:#74777e; text-transform:uppercase;">Equity</div>
-                                <div style="font-size:1.1rem; font-weight:700; color:#00152a;">${fmt(summary.total_equity)}</div>
+                                <div style="font-size:1.1rem; font-weight:700; color:#00152a;">${fmt(data.total_equity)}</div>
                             </div>
                             <div style="background:#f1f4f6; border-radius:8px; padding:10px; text-align:center;">
-                                <div style="font-size:0.72rem; color:#74777e; text-transform:uppercase;">${profitLabel} (${summary.fy})</div>
-                                <div style="font-size:1.1rem; font-weight:700; color:${profitColor};">${fmt2(summary.total_net_profit)}</div>
+                                <div style="font-size:0.72rem; color:#74777e; text-transform:uppercase;">${profitLabel} (${data.fy})</div>
+                                <div style="font-size:1.1rem; font-weight:700; color:${profitColor};">${fmt2(data.total_net_profit)}</div>
                             </div>
                         </div>
                     `;
@@ -699,12 +698,13 @@
                 if (!data.properties.length) {
                     html += '<p style="color:#757575">No properties yet.</p>';
                 } else {
+                    const summaries = data.property_summaries || [];
                     html += '<table><tr><th>ID</th><th>Name</th><th>Purchase</th><th>Value</th><th>Debt</th><th>Net P&L</th><th></th></tr>';
                     for (const p of data.properties) {
                         const purchaseInfo = `${fmt(p.purchase_price||0)}` + (p.purchase_date ? `<br><span style="font-size:0.72rem;color:#74777e;">${p.purchase_date}</span>` : '');
                         const valueInfo = `${fmt(p.current_value||0)}` + (p.current_value_date ? `<br><span style="font-size:0.72rem;color:#74777e;">${p.current_value_date}</span>` : '');
                         const debtInfo = p.mortgage_balance ? `${fmt(p.mortgage_balance)}` + (p.mortgage_balance_date ? `<br><span style="font-size:0.72rem;color:#74777e;">${p.mortgage_balance_date}</span>` : '') : '-';
-                        const ps = summary?.properties?.find(s => s.id === p.id);
+                        const ps = summaries.find(s => s.id === p.id);
                         let plCell = '-';
                         if (ps) {
                             const plColor = ps.net_profit >= 0 ? '#0a6c44' : '#ba1a1a';
@@ -859,8 +859,7 @@
             document.getElementById(id).innerHTML = `<div class="status ${type}">${msg}</div>`;
         }
 
-        // Init
-        refreshPropertySelects();
+        // Init — single loadPortfolio() call populates everything (KPIs + table + dropdowns)
         loadPortfolio();
     </script>
 </body>

@@ -125,33 +125,15 @@ async def debug_ledger(prop_id: str):
 
 
 @app.get("/api/portfolio")
-async def get_portfolio():
-    """Return the full portfolio with all properties."""
-    from backend.services.ledger import load_portfolio
-    portfolio = load_portfolio()
-    return portfolio.model_dump(mode="json")
+async def get_portfolio(fy: str = None):
+    """
+    Return the full portfolio: properties list + KPI summary + available FYs.
 
-
-@app.get("/api/portfolio/fy-list")
-async def get_portfolio_fy_list():
-    """Return list of all FYs that have transaction data across all properties."""
-    from backend.services.ledger import load_portfolio, load_ledger
-    from backend.services.fy_utils import get_fy
-
-    portfolio = load_portfolio()
-    fy_set = set()
-    for prop in portfolio.properties:
-        ledger = load_ledger(prop.id)
-        for tx in ledger.transactions:
-            fy_set.add(get_fy(tx.date))
-    return sorted(fy_set, reverse=True)
-
-
-@app.get("/api/portfolio/summary")
-async def get_portfolio_summary(fy: str = None):
-    """Return aggregated portfolio KPIs and per-property P&L, optionally filtered by FY."""
+    Single endpoint eliminates Vercel /tmp isolation issues where separate
+    Lambda instances return inconsistent data for properties vs summary.
+    """
     from datetime import datetime
-    from backend.services.ledger import load_portfolio, aggregate_by_category_month
+    from backend.services.ledger import load_portfolio, load_ledger, aggregate_by_category_month
     from backend.services.fy_utils import get_fy, get_fy_year_range, get_fy_months
     from backend.config import (
         INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS,
@@ -162,6 +144,9 @@ async def get_portfolio_summary(fy: str = None):
     start_yr, _ = get_fy_year_range(selected_fy)
     months = get_fy_months(start_yr)
 
+    # Collect available FYs across all properties
+    fy_set = set()
+
     total_asset_value = 0.0
     total_debt = 0.0
     property_summaries = []
@@ -169,6 +154,11 @@ async def get_portfolio_summary(fy: str = None):
     for prop in portfolio.properties:
         total_asset_value += prop.current_value or prop.purchase_price or 0
         total_debt += prop.mortgage_balance or 0
+
+        # Collect FYs from this property's transactions
+        ledger = load_ledger(prop.id)
+        for tx in ledger.transactions:
+            fy_set.add(get_fy(tx.date))
 
         agg = aggregate_by_category_month(prop.id)
 
@@ -205,20 +195,19 @@ async def get_portfolio_summary(fy: str = None):
         })
 
     total_equity = total_asset_value - total_debt
-    total_income = sum(p["income"] for p in property_summaries)
-    total_expenses = sum(p["opex"] + p["utilities"] + p["financing"] + p["depreciation"] for p in property_summaries)
     total_net_profit = sum(p["net_profit"] for p in property_summaries)
 
     return {
+        "properties": [p.model_dump(mode="json") for p in portfolio.properties],
+        "settings": portfolio.settings,
         "fy": selected_fy,
+        "fy_list": sorted(fy_set, reverse=True),
         "total_asset_value": round(total_asset_value, 2),
         "total_debt": round(total_debt, 2),
         "total_equity": round(total_equity, 2),
-        "total_income": round(total_income, 2),
-        "total_expenses": round(total_expenses, 2),
         "total_net_profit": round(total_net_profit, 2),
         "property_count": len(portfolio.properties),
-        "properties": property_summaries,
+        "property_summaries": property_summaries,
     }
 
 
