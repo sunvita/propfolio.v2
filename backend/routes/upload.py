@@ -335,11 +335,57 @@ async def confirm_items(prop_id: str, payload: dict = Body(...)):
     transactions = [Transaction.model_validate(item) for item in raw_items]
     result = append_transactions(prop_id, transactions)
 
+    # Return full portfolio snapshot from THIS Lambda (which has the freshly-written data)
+    # This avoids Vercel /tmp isolation where the portfolio endpoint hits a different Lambda
+    from backend.services.ledger import load_portfolio, aggregate_by_category_month
+    from backend.services.fy_utils import get_fy, get_fy_year_range, get_fy_months
+    from backend.config import INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS
+    from datetime import datetime as _dt
+
+    portfolio = load_portfolio()
+    selected_fy = get_fy(_dt.now())
+    start_yr, _ = get_fy_year_range(selected_fy)
+    months = get_fy_months(start_yr)
+    fy_set = set()
+    property_summaries = []
+    total_asset_value = 0.0
+    total_debt = 0.0
+
+    for p in portfolio.properties:
+        total_asset_value += p.current_value or p.purchase_price or 0
+        total_debt += p.mortgage_balance or 0
+        ledger = load_ledger(p.id)
+        for tx in ledger.transactions:
+            fy_set.add(get_fy(tx.date))
+        agg = aggregate_by_category_month(p.id)
+        def _sec(rows):
+            t = 0.0
+            for ck in rows:
+                for _, mn, yr in months:
+                    t += abs(agg.get((ck, f"{yr}-{mn:02d}"), 0))
+            return round(t, 2)
+        inc = _sec(INCOME_ROWS); opx = _sec(OPEX_ROWS); utl = _sec(UTILITY_ROWS)
+        fin = _sec(FINANCING_ROWS); dep = _sec(CAPITAL_ROWS)
+        noi = round(inc - opx, 2); np_ = round(noi - utl - fin - dep, 2)
+        property_summaries.append({"id": p.id, "short_name": p.short_name,
+            "display_name": p.display_name, "net_profit": np_})
+
     return {
         "status": "confirmed",
         "property_id": prop_id,
         "added": result["added"],
         "skipped": result["skipped"],
+        "portfolio_snapshot": {
+            "properties": [p.model_dump(mode="json") for p in portfolio.properties],
+            "fy": selected_fy,
+            "fy_list": sorted(fy_set, reverse=True),
+            "total_asset_value": round(total_asset_value, 2),
+            "total_debt": round(total_debt, 2),
+            "total_equity": round(total_asset_value - total_debt, 2),
+            "total_net_profit": round(sum(ps["net_profit"] for ps in property_summaries), 2),
+            "property_count": len(portfolio.properties),
+            "property_summaries": property_summaries,
+        },
     }
 
 
