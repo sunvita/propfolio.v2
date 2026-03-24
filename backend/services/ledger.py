@@ -59,6 +59,7 @@ def add_property(data: PropertyCreate) -> Property:
         address=data.address,
         purchase_date=data.purchase_date,
         purchase_price=data.purchase_price,
+        current_value=data.current_value,
         notes=data.notes or ""
     )
 
