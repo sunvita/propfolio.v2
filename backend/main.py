@@ -65,6 +65,81 @@ async def get_portfolio():
     return portfolio.model_dump(mode="json")
 
 
+@app.get("/api/portfolio/summary")
+async def get_portfolio_summary():
+    """Return aggregated portfolio KPIs and per-property P&L for current FY."""
+    from datetime import datetime
+    from backend.services.ledger import load_portfolio, aggregate_by_category_month
+    from backend.services.fy_utils import get_fy, get_fy_year_range, get_fy_months
+    from backend.config import (
+        INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS,
+    )
+
+    portfolio = load_portfolio()
+    current_fy = get_fy(datetime.now())
+    start_yr, _ = get_fy_year_range(current_fy)
+    months = get_fy_months(start_yr)
+
+    total_asset_value = 0.0
+    total_debt = 0.0
+    property_summaries = []
+
+    for prop in portfolio.properties:
+        total_asset_value += prop.current_value or prop.purchase_price or 0
+        total_debt += prop.mortgage_balance or 0
+
+        agg = aggregate_by_category_month(prop.id)
+
+        def _section_total(rows_dict):
+            total = 0.0
+            for cat_key in rows_dict:
+                for _, m_num, yr in months:
+                    mk = f"{yr}-{m_num:02d}"
+                    val = agg.get((cat_key, mk), 0)
+                    total += abs(val)
+            return round(total, 2)
+
+        income = _section_total(INCOME_ROWS)
+        opex = _section_total(OPEX_ROWS)
+        utilities = _section_total(UTILITY_ROWS)
+        financing = _section_total(FINANCING_ROWS)
+        depreciation = _section_total(CAPITAL_ROWS)
+        noi = round(income - opex, 2)
+        net_profit = round(noi - utilities - financing - depreciation, 2)
+
+        property_summaries.append({
+            "id": prop.id,
+            "short_name": prop.short_name,
+            "display_name": prop.display_name,
+            "current_value": prop.current_value or prop.purchase_price or 0,
+            "mortgage_balance": prop.mortgage_balance or 0,
+            "income": income,
+            "opex": opex,
+            "noi": noi,
+            "utilities": utilities,
+            "financing": financing,
+            "depreciation": depreciation,
+            "net_profit": net_profit,
+        })
+
+    total_equity = total_asset_value - total_debt
+    total_income = sum(p["income"] for p in property_summaries)
+    total_expenses = sum(p["opex"] + p["utilities"] + p["financing"] + p["depreciation"] for p in property_summaries)
+    total_net_profit = sum(p["net_profit"] for p in property_summaries)
+
+    return {
+        "fy": current_fy,
+        "total_asset_value": round(total_asset_value, 2),
+        "total_debt": round(total_debt, 2),
+        "total_equity": round(total_equity, 2),
+        "total_income": round(total_income, 2),
+        "total_expenses": round(total_expenses, 2),
+        "total_net_profit": round(total_net_profit, 2),
+        "property_count": len(portfolio.properties),
+        "properties": property_summaries,
+    }
+
+
 # Serve the test UI if available
 _static_dir = Path(__file__).resolve().parent.parent / "static"
 if _static_dir.exists():

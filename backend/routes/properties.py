@@ -55,6 +55,7 @@ async def get_property_summary(prop_id: str):
     from backend.config import (
         INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS,
     )
+    from backend.services.fy_utils import get_fy_year_range, get_fy_months
 
     prop = get_property(prop_id)
     if not prop:
@@ -62,28 +63,39 @@ async def get_property_summary(prop_id: str):
 
     agg = aggregate_by_category_month(prop_id)
     current_fy = get_fy(datetime.now())
+    start_yr, _ = get_fy_year_range(current_fy)
+    months = get_fy_months(start_yr)
 
-    # Sum by section for current FY
-    def _section_total(rows_dict: dict, agg: dict, fy: str) -> float:
-        from backend.services.fy_utils import get_fy_year_range, get_fy_months
-        start_yr, _ = get_fy_year_range(fy)
-        months = get_fy_months(start_yr)
-        total = 0.0
+    # Sum per-category for current FY
+    def _category_totals(rows_dict: dict) -> dict[str, float]:
+        totals = {}
         for cat_key in rows_dict:
+            cat_total = 0.0
             for _, m_num, yr in months:
                 mk = f"{yr}-{m_num:02d}"
                 val = agg.get((cat_key, mk), 0)
-                total += abs(val)
-        return total
+                cat_total += abs(val)
+            if cat_total > 0:
+                totals[cat_key] = round(cat_total, 2)
+        return totals
 
-    income = _section_total(INCOME_ROWS, agg, current_fy)
-    opex = _section_total(OPEX_ROWS, agg, current_fy)
-    utilities = _section_total(UTILITY_ROWS, agg, current_fy)
-    financing = _section_total(FINANCING_ROWS, agg, current_fy)
-    depreciation = _section_total(CAPITAL_ROWS, agg, current_fy)
+    def _section_total(rows_dict: dict) -> float:
+        return sum(_category_totals(rows_dict).values())
 
-    noi = income - opex
-    net_profit = noi - utilities - financing - depreciation
+    income_breakdown = _category_totals(INCOME_ROWS)
+    opex_breakdown = _category_totals(OPEX_ROWS)
+    utility_breakdown = _category_totals(UTILITY_ROWS)
+    financing_breakdown = _category_totals(FINANCING_ROWS)
+    capital_breakdown = _category_totals(CAPITAL_ROWS)
+
+    income = round(sum(income_breakdown.values()), 2)
+    opex = round(sum(opex_breakdown.values()), 2)
+    utilities = round(sum(utility_breakdown.values()), 2)
+    financing = round(sum(financing_breakdown.values()), 2)
+    depreciation = round(sum(capital_breakdown.values()), 2)
+
+    noi = round(income - opex, 2)
+    net_profit = round(noi - utilities - financing - depreciation, 2)
 
     if net_profit > 0:
         gearing = "Positively Geared"
@@ -95,15 +107,28 @@ async def get_property_summary(prop_id: str):
         gearing = "Neutral"
         gearing_detail = "Break Even"
 
+    # Category display name lookup
+    all_rows = {**INCOME_ROWS, **OPEX_ROWS, **UTILITY_ROWS, **FINANCING_ROWS, **CAPITAL_ROWS}
+    def _with_labels(breakdown: dict) -> list[dict]:
+        return [
+            {"key": k, "label": all_rows.get(k, (0, k))[1], "amount": v}
+            for k, v in breakdown.items()
+        ]
+
     return {
         "property": prop,
         "fy": current_fy,
         "income": income,
+        "income_breakdown": _with_labels(income_breakdown),
         "opex": opex,
+        "opex_breakdown": _with_labels(opex_breakdown),
         "noi": noi,
         "utilities": utilities,
+        "utility_breakdown": _with_labels(utility_breakdown),
         "financing": financing,
+        "financing_breakdown": _with_labels(financing_breakdown),
         "depreciation": depreciation,
+        "capital_breakdown": _with_labels(capital_breakdown),
         "net_profit": net_profit,
         "gearing": gearing,
         "gearing_detail": gearing_detail,
