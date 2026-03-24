@@ -57,6 +57,73 @@ async def health_check():
     }
 
 
+@app.get("/api/debug/{prop_id}")
+async def debug_ledger(prop_id: str):
+    """Diagnostic endpoint: show raw category counts, amounts, and aggregation keys."""
+    from datetime import datetime
+    from backend.services.ledger import load_ledger, aggregate_by_category_month
+    from backend.services.fy_utils import get_fy, get_fy_year_range, get_fy_months
+    from backend.config import FINANCING_ROWS, CASHFLOW_ROWS
+
+    ledger = load_ledger(prop_id)
+    current_fy = get_fy(datetime.now())
+    start_yr, _ = get_fy_year_range(current_fy)
+    months = get_fy_months(start_yr)
+
+    # 1. Raw transaction counts and amounts by category
+    by_category = {}
+    for tx in ledger.transactions:
+        cat = tx.category
+        if cat not in by_category:
+            by_category[cat] = {"count": 0, "total_amount": 0, "type": tx.type, "sample_dates": []}
+        by_category[cat]["count"] += 1
+        by_category[cat]["total_amount"] = round(by_category[cat]["total_amount"] + abs(tx.amount), 2)
+        if len(by_category[cat]["sample_dates"]) < 3:
+            d = tx.date if isinstance(tx.date, str) else tx.date.isoformat()
+            by_category[cat]["sample_dates"].append(d[:10])
+
+    # 2. Aggregation dict — show all keys that contain financing/mortgage categories
+    agg = aggregate_by_category_month(prop_id)
+    mortgage_keys = {k: v for k, v in agg.items() if "mortgage" in k[0] or "bank" in k[0] or "principal" in k[0]}
+
+    # 3. What _category_totals would produce for FINANCING_ROWS
+    financing_check = {}
+    for cat_key in FINANCING_ROWS:
+        cat_total = 0.0
+        month_vals = {}
+        for _, m_num, yr in months:
+            mk = f"{yr}-{m_num:02d}"
+            val = agg.get((cat_key, mk), 0)
+            if val != 0:
+                month_vals[mk] = val
+            cat_total += abs(val)
+        financing_check[cat_key] = {"total": round(cat_total, 2), "monthly": month_vals}
+
+    # 4. Same for CASHFLOW_ROWS
+    cashflow_check = {}
+    for cat_key in CASHFLOW_ROWS:
+        cat_total = 0.0
+        month_vals = {}
+        for _, m_num, yr in months:
+            mk = f"{yr}-{m_num:02d}"
+            val = agg.get((cat_key, mk), 0)
+            if val != 0:
+                month_vals[mk] = val
+            cat_total += abs(val)
+        cashflow_check[cat_key] = {"total": round(cat_total, 2), "monthly": month_vals}
+
+    return {
+        "property_id": prop_id,
+        "current_fy": current_fy,
+        "fy_month_range": f"{months[-1][2]}-{months[-1][1]:02d} to {months[0][2]}-{months[0][1]:02d}",
+        "total_transactions": len(ledger.transactions),
+        "categories": by_category,
+        "financing_agg_keys": {f"{k[0]}|{k[1]}": v for k, v in mortgage_keys.items()},
+        "financing_category_totals": financing_check,
+        "cashflow_category_totals": cashflow_check,
+    }
+
+
 @app.get("/api/portfolio")
 async def get_portfolio():
     """Return the full portfolio with all properties."""
