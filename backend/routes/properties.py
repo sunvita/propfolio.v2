@@ -54,6 +54,7 @@ async def get_property_summary(prop_id: str):
     from backend.services.ledger import aggregate_by_category_month
     from backend.config import (
         INCOME_ROWS, OPEX_ROWS, UTILITY_ROWS, FINANCING_ROWS, CAPITAL_ROWS,
+        CASHFLOW_ROWS,
     )
     from backend.services.fy_utils import get_fy_year_range, get_fy_months
 
@@ -79,14 +80,12 @@ async def get_property_summary(prop_id: str):
                 totals[cat_key] = round(cat_total, 2)
         return totals
 
-    def _section_total(rows_dict: dict) -> float:
-        return sum(_category_totals(rows_dict).values())
-
     income_breakdown = _category_totals(INCOME_ROWS)
     opex_breakdown = _category_totals(OPEX_ROWS)
     utility_breakdown = _category_totals(UTILITY_ROWS)
     financing_breakdown = _category_totals(FINANCING_ROWS)
     capital_breakdown = _category_totals(CAPITAL_ROWS)
+    cashflow_breakdown = _category_totals(CASHFLOW_ROWS)
 
     income = round(sum(income_breakdown.values()), 2)
     opex = round(sum(opex_breakdown.values()), 2)
@@ -108,12 +107,24 @@ async def get_property_summary(prop_id: str):
         gearing_detail = "Break Even"
 
     # Category display name lookup
-    all_rows = {**INCOME_ROWS, **OPEX_ROWS, **UTILITY_ROWS, **FINANCING_ROWS, **CAPITAL_ROWS}
+    all_rows = {**INCOME_ROWS, **OPEX_ROWS, **UTILITY_ROWS, **FINANCING_ROWS, **CAPITAL_ROWS, **CASHFLOW_ROWS}
     def _with_labels(breakdown: dict) -> list[dict]:
         return [
             {"key": k, "label": all_rows.get(k, (0, k))[1], "amount": v}
             for k, v in breakdown.items()
         ]
+
+    # Also compute principal_repaid from ledger directly (may be in cash flow)
+    from backend.services.ledger import load_ledger as _load_ledger
+    ledger = _load_ledger(prop_id)
+    principal_total = 0.0
+    for tx in ledger.transactions:
+        if tx.category == "principal_repaid":
+            tx_date = tx.date if isinstance(tx.date, str) else tx.date.isoformat()
+            tx_month = tx_date[:7]
+            tx_fy = get_fy(tx.date)
+            if tx_fy == current_fy:
+                principal_total += abs(tx.amount)
 
     return {
         "property": prop,
@@ -132,4 +143,7 @@ async def get_property_summary(prop_id: str):
         "net_profit": net_profit,
         "gearing": gearing,
         "gearing_detail": gearing_detail,
+        "cashflow": cashflow_breakdown,
+        "cashflow_breakdown": _with_labels(cashflow_breakdown),
+        "principal_repaid": round(principal_total, 2),
     }

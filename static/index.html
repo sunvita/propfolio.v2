@@ -28,6 +28,7 @@
         .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
         .badge-green { background: #9ff5c1; color: #0a6c44; }
         .badge-red { background: #ffcdd2; color: #b71c1c; }
+        .badge-purple { background: #e1bee7; color: #4a148c; }
         .file-count { font-size: 0.8rem; color: #43474d; margin-bottom: 8px; }
         /* Drop zone */
         .drop-zone { border: 2px dashed #c5ccd3; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.2s; background: #fafbfc; margin-bottom: 12px; }
@@ -145,6 +146,29 @@
                 <select id="summary-prop"><option value="">— select —</option></select>
                 <button onclick="loadSummary()">Load Summary</button>
                 <div id="summary-view" style="margin-top: 12px;"></div>
+            </div>
+
+            <h2>7. Transaction Viewer</h2>
+            <div class="card">
+                <label>Property</label>
+                <select id="tx-prop"><option value="">— select —</option></select>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <label>Filter by Category</label>
+                        <select id="tx-cat-filter"><option value="">All Categories</option></select>
+                    </div>
+                    <div style="flex:1;">
+                        <label>Filter by Type</label>
+                        <select id="tx-type-filter">
+                            <option value="">All Types</option>
+                            <option value="income">Income</option>
+                            <option value="expense">Expense</option>
+                            <option value="cash_flow">Cash Flow</option>
+                        </select>
+                    </div>
+                </div>
+                <button onclick="loadTransactions()">Load</button>
+                <div id="tx-view" style="margin-top: 12px;"></div>
             </div>
         </div>
     </div>
@@ -329,6 +353,7 @@
                 const opts = props.map(p => `<option value="${p.id}">${p.display_name}</option>`).join('');
                 document.getElementById('prop-select').innerHTML = opts || '<option>No properties</option>';
                 document.getElementById('summary-prop').innerHTML = opts || '<option>No properties</option>';
+                document.getElementById('tx-prop').innerHTML = opts || '<option>No properties</option>';
             } catch(e) {}
         }
 
@@ -660,6 +685,18 @@
                 const subRows = (items, color) => items.map(i =>
                     `<tr style="font-size:0.8rem;"><td style="padding-left:20px; color:${color}">${i.label}</td><td style="color:${color}">${fmt(i.amount)}</td></tr>`
                 ).join('');
+                // Build cash flow section
+                const cfItems = d.cashflow_breakdown || [];
+                const hasCashflow = cfItems.length > 0 || d.principal_repaid > 0;
+                let cashflowHtml = '';
+                if (hasCashflow) {
+                    cashflowHtml = `
+                        <tr><td colspan="2" style="padding-top:12px;"><b style="color:#4A148C;">CASH FLOW</b></td></tr>
+                        ${subRows(cfItems, '#4A148C')}
+                        ${d.principal_repaid > 0 ? `<tr style="font-size:0.8rem;"><td style="padding-left:20px; color:#4A148C;">Principal Repaid</td><td style="color:#4A148C;">${fmt(d.principal_repaid)}</td></tr>` : ''}
+                    `;
+                }
+
                 document.getElementById('summary-view').innerHTML = `
                     <div class="status ${gearingClass}" style="margin-bottom:8px; font-weight:600;">
                         ${d.gearing} &mdash; ${d.gearing_detail}
@@ -678,10 +715,58 @@
                         <tr><td><b>Capital Allowances</b></td><td style="color:#b71c1c"><b>${fmt(d.depreciation)}</b></td></tr>
                         ${subRows(d.capital_breakdown || [], '#b71c1c')}
                         <tr style="background:#f1f4f6;"><td><b>Net Profit / (Loss)</b></td><td><b>${fmt(d.net_profit)}</b></td></tr>
+                        ${cashflowHtml}
                     </table>
                 `;
             } catch(e) {
                 document.getElementById('summary-view').innerHTML = `<p class="error">${e.message}</p>`;
+            }
+        }
+
+        async function loadTransactions() {
+            const propId = document.getElementById('tx-prop').value;
+            if (!propId) return;
+            const catFilter = document.getElementById('tx-cat-filter').value;
+            const typeFilter = document.getElementById('tx-type-filter').value;
+            try {
+                const res = await fetch(`${API}/api/transactions/${propId}`);
+                let txs = await res.json();
+                if (!res.ok) throw new Error('Failed to load transactions');
+
+                // Populate category filter dropdown
+                const cats = [...new Set(txs.map(t => t.category))].sort();
+                const catSelect = document.getElementById('tx-cat-filter');
+                const currentCat = catSelect.value;
+                catSelect.innerHTML = '<option value="">All Categories</option>' +
+                    cats.map(c => `<option value="${c}" ${c === currentCat ? 'selected' : ''}>${c}</option>`).join('');
+
+                // Apply filters
+                if (catFilter) txs = txs.filter(t => t.category === catFilter);
+                if (typeFilter) txs = txs.filter(t => t.type === typeFilter);
+
+                // Sort by date descending
+                txs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+                const fmt2 = v => '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+
+                // Summary counts
+                const byType = {};
+                txs.forEach(t => { byType[t.type] = (byType[t.type] || 0) + 1; });
+                const countHtml = Object.entries(byType).map(([k,v]) => `${k}: ${v}`).join(' · ');
+
+                let html = `<div style="font-size:0.8rem; color:#43474d; margin-bottom:6px;">${txs.length} transactions${countHtml ? ' (' + countHtml + ')' : ''}</div>`;
+                html += '<div style="max-height:400px; overflow-y:auto;"><table><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Type</th><th>Source</th></tr>';
+                for (const tx of txs) {
+                    const typeClass = tx.type === 'income' ? 'badge-green' : tx.type === 'cash_flow' ? 'badge-purple' : 'badge-red';
+                    const dateStr = (tx.date || '').substring(0, 10);
+                    const descShort = (tx.description || '').substring(0, 40) + ((tx.description || '').length > 40 ? '…' : '');
+                    const srcShort = (tx.source_pdf || '—').substring(0, 20);
+                    html += `<tr><td style="white-space:nowrap;">${dateStr}</td><td>${tx.category}</td><td title="${tx.description || ''}" style="font-size:0.78rem;">${descShort}</td><td>${fmt2(tx.amount)}</td><td><span class="badge ${typeClass}">${tx.type}</span></td><td style="font-size:0.72rem;">${srcShort}</td></tr>`;
+                }
+                html += '</table></div>';
+                document.getElementById('tx-view').innerHTML = html;
+            } catch(e) {
+                document.getElementById('tx-view').innerHTML = `<p class="error">${e.message}</p>`;
             }
         }
 

@@ -187,27 +187,32 @@ Extract BOTH P&L and Cash Flow items:
   → letting_fees (type:"expense") = if a letting/leasing fee is shown
   → cash_received (type:"cash_flow") = NET EFT deposit to owner's account
   → maintenance, repairs, cleaning etc. = their respective EXPENSE categories
-WATER/UTILITIES ON PM STATEMENTS — READ CAREFULLY:
-Water and utility charges on PM statements can be EITHER an expense OR income depending
-on context. You MUST determine the direction from the statement layout:
+WATER/UTILITIES ON PM STATEMENTS — CRITICAL RULES:
+Water and utility charges on PM statements can be EITHER an expense OR income.
+You MUST follow this DECISION TREE strictly:
 
-(a) DEDUCTED from owner (reduces net payment) → This means the PM paid a water/utility
-    bill on behalf of the owner. It is an EXPENSE to the owner.
-    → water (type:"expense") — or electricity/gas as appropriate
-    Clues: appears in "Disbursements", "Expenses", "Payments Out", "Deductions" section;
-    listed alongside management fees and other costs; labelled "Water Rates", "Water Usage",
-    "Water Corp invoice", or similar; reduces the net EFT to the owner.
+STEP 1: Is this a STANDALONE utility bill (from Water Corporation, Sydney Water, SA Water,
+        Unity Water, Hunter Water, etc.)? → ALWAYS water (type:"expense"). STOP.
 
-(b) ADDED to owner (increases net payment) → This means the tenant reimbursed the owner
-    for excess water/utility usage. It is INCOME to the owner.
-    → excess_bill_shares (type:"income")
-    Clues: appears in "Income", "Receipts", "Credits" section; labelled "Tenant water
-    reimbursement", "Excess water recovery", "Water recovery from tenant", "Water
-    contribution"; increases the net EFT to the owner.
+STEP 2: On a PM statement, is the water amount in a DEDUCTIONS / DISBURSEMENTS / EXPENSES
+        section (i.e., it REDUCES the net payment to owner)?
+        → water (type:"expense"). This is the PM paying a water bill on the owner's behalf.
 
-If unclear, look at whether the amount INCREASES or DECREASES the net payment to owner.
-Standalone water authority bills (Water Corporation, Sydney Water, etc.) are always
-water (type:"expense").
+STEP 3: On a PM statement, is the water amount in an INCOME / RECEIPTS / CREDITS section
+        (i.e., it INCREASES the net payment to owner)?
+        → excess_bill_shares (type:"income"). This is a tenant reimbursement.
+
+STEP 4: If the section is ambiguous, use ARITHMETIC:
+        Net EFT = Gross Rent − PM Fees − [this water amount] → it's an EXPENSE (water)
+        Net EFT = Gross Rent − PM Fees + [this water amount] → it's INCOME (excess_bill_shares)
+
+IMPORTANT: You MUST be consistent. Within a SINGLE PM statement, if water appears in the
+deductions column, it is ALWAYS an expense. If it appears as a credit/receipt, it is ALWAYS
+income. Do NOT classify the same type of water line differently across statements from the
+same property manager unless the actual direction differs.
+
+DEFAULT: If you truly cannot determine direction, classify as water (type:"expense") with
+confidence:"low".
 IMPORTANT: Use the STATEMENT PERIOD date for rental_income and expenses.
 Use the PAYMENT/EFT date for cash_received.
 Do NOT create cash_received from the rent amount — only from actual EFT/payment lines.
