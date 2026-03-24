@@ -438,6 +438,13 @@
             let dupCount = 0;
             let filesProcessed = 0;
 
+            // Fetch property data to send with upload (Vercel /tmp isolation workaround)
+            let propertyJson = null;
+            try {
+                const propRes = await fetch(`${API}/api/properties/${propId}`);
+                if (propRes.ok) propertyJson = JSON.stringify(await propRes.json());
+            } catch(e) {}
+
             try {
                 for (let b = 0; b < batches.length; b++) {
                     const batch = batches[b];
@@ -445,6 +452,7 @@
 
                     const form = new FormData();
                     for (const f of batch) form.append('files', f);
+                    if (propertyJson) form.append('property_json', propertyJson);
 
                     setProgress(
                         Math.round(((filesProcessed) / totalFiles) * 80) + 5,
@@ -602,10 +610,17 @@
                     return copy;
                 });
 
+                // Fetch property data for Vercel /tmp isolation workaround
+                let confirmPropJson = null;
+                try {
+                    const cpRes = await fetch(`${API}/api/properties/${pendingPropId}`);
+                    if (cpRes.ok) confirmPropJson = JSON.stringify(await cpRes.json());
+                } catch(e) {}
+
                 const res = await fetch(`${API}/api/upload/confirm-items/${pendingPropId}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({items}),
+                    body: JSON.stringify({items, property_json: confirmPropJson}),
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.detail || 'Confirm failed');

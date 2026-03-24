@@ -11,7 +11,7 @@ from uuid import uuid4
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Body
+from fastapi import APIRouter, HTTPException, UploadFile, File, Body, Form
 
 from backend.config import UPLOADS_DIR, PARSED_DIR
 from backend.models.schemas import Transaction
@@ -169,16 +169,41 @@ def _process_single_pdf(prop, file: UploadFile) -> dict:
 
 
 @router.post("/{prop_id}")
-async def upload_pdfs(prop_id: str, files: List[UploadFile] = File(...)):
+async def upload_pdfs(
+    prop_id: str,
+    files: List[UploadFile] = File(...),
+    property_json: str = Form(None),
+):
     """
     Upload one or more PDFs for a property.
 
     Accepts multiple files. Each is parsed, classified, and stored as
     a separate pending batch for review.
 
-    Returns a list of results, one per file.
+    On Vercel, different Lambda instances have isolated /tmp. If the property
+    doesn't exist in this instance's /tmp, the frontend can pass property_json
+    (a JSON string of the property object) to bootstrap it locally.
     """
+    import json as _json
+    from backend.services.ledger import load_portfolio, save_portfolio, save_ledger
+    from backend.models.schemas import Ledger as LedgerModel, Property as PropertyModel
+
     prop = get_property(prop_id)
+    if not prop and property_json:
+        # Bootstrap property from frontend-supplied data into this Lambda's /tmp
+        try:
+            prop_data = _json.loads(property_json)
+            prop_obj = PropertyModel.model_validate(prop_data)
+            portfolio = load_portfolio()
+            # Only add if not already there
+            if not any(p.id == prop_id for p in portfolio.properties):
+                portfolio.properties.append(prop_obj)
+                save_portfolio(portfolio)
+                save_ledger(prop_id, LedgerModel(transactions=[]))
+            prop = prop_obj
+        except Exception:
+            pass  # Fall through to the 404 below
+
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
 
@@ -278,11 +303,28 @@ async def confirm_items(prop_id: str, payload: dict = Body(...)):
     """
     Confirm selected transaction items directly (no pending file dependency).
 
-    Accepts: { "items": [ {transaction objects} ] }
+    Accepts: { "items": [ {transaction objects} ], "property_json": "{...}" (optional) }
     This bypasses /tmp file storage, fixing Vercel serverless where
     Lambda instances don't share /tmp.
     """
+    import json as _json
+    from backend.services.ledger import load_portfolio, save_portfolio, save_ledger
+    from backend.models.schemas import Ledger as LedgerModel, Property as PropertyModel
+
     prop = get_property(prop_id)
+    if not prop and payload.get("property_json"):
+        try:
+            prop_data = _json.loads(payload["property_json"]) if isinstance(payload["property_json"], str) else payload["property_json"]
+            prop_obj = PropertyModel.model_validate(prop_data)
+            portfolio = load_portfolio()
+            if not any(p.id == prop_id for p in portfolio.properties):
+                portfolio.properties.append(prop_obj)
+                save_portfolio(portfolio)
+                save_ledger(prop_id, LedgerModel(transactions=[]))
+            prop = prop_obj
+        except Exception:
+            pass
+
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
 
