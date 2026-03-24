@@ -61,6 +61,8 @@ def add_property(data: PropertyCreate) -> Property:
         purchase_price=data.purchase_price,
         current_value=data.current_value,
         current_value_date=data.current_value_date,
+        mortgage_balance=data.mortgage_balance,
+        mortgage_balance_date=data.mortgage_balance_date,
         notes=data.notes or ""
     )
 

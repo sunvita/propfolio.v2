@@ -11,6 +11,8 @@ class PropertyCreate(BaseModel):
     purchase_date: Optional[str] = None
     current_value: Optional[float] = None
     current_value_date: Optional[str] = None
+    mortgage_balance: Optional[float] = None
+    mortgage_balance_date: Optional[str] = None
     notes: str = ""
 
 
@@ -23,6 +25,7 @@ class PropertyUpdate(BaseModel):
     current_value: Optional[float] = None
     current_value_date: Optional[str] = None
     mortgage_balance: Optional[float] = None
+    mortgage_balance_date: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -38,6 +41,7 @@ class Property(BaseModel):
     current_value: Optional[float] = None
     current_value_date: Optional[str] = None
     mortgage_balance: Optional[float] = None
+    mortgage_balance_date: Optional[str] = None
     thumbnail: Optional[str] = None
     notes: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)

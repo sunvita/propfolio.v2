@@ -132,9 +132,24 @@ async def get_portfolio():
     return portfolio.model_dump(mode="json")
 
 
+@app.get("/api/portfolio/fy-list")
+async def get_portfolio_fy_list():
+    """Return list of all FYs that have transaction data across all properties."""
+    from backend.services.ledger import load_portfolio, load_ledger
+    from backend.services.fy_utils import get_fy
+
+    portfolio = load_portfolio()
+    fy_set = set()
+    for prop in portfolio.properties:
+        ledger = load_ledger(prop.id)
+        for tx in ledger.transactions:
+            fy_set.add(get_fy(tx.date))
+    return sorted(fy_set, reverse=True)
+
+
 @app.get("/api/portfolio/summary")
-async def get_portfolio_summary():
-    """Return aggregated portfolio KPIs and per-property P&L for current FY."""
+async def get_portfolio_summary(fy: str = None):
+    """Return aggregated portfolio KPIs and per-property P&L, optionally filtered by FY."""
     from datetime import datetime
     from backend.services.ledger import load_portfolio, aggregate_by_category_month
     from backend.services.fy_utils import get_fy, get_fy_year_range, get_fy_months
@@ -143,8 +158,8 @@ async def get_portfolio_summary():
     )
 
     portfolio = load_portfolio()
-    current_fy = get_fy(datetime.now())
-    start_yr, _ = get_fy_year_range(current_fy)
+    selected_fy = fy or get_fy(datetime.now())
+    start_yr, _ = get_fy_year_range(selected_fy)
     months = get_fy_months(start_yr)
 
     total_asset_value = 0.0
@@ -195,7 +210,7 @@ async def get_portfolio_summary():
     total_net_profit = sum(p["net_profit"] for p in property_summaries)
 
     return {
-        "fy": current_fy,
+        "fy": selected_fy,
         "total_asset_value": round(total_asset_value, 2),
         "total_debt": round(total_debt, 2),
         "total_equity": round(total_equity, 2),

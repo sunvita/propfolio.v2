@@ -2,13 +2,14 @@
 Property CRUD routes.
 """
 
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Query
 
 from backend.models.schemas import PropertyCreate, PropertyUpdate, Property
 from backend.services.ledger import (
     add_property, get_property, list_properties, load_ledger, update_property,
 )
-from backend.services.fy_utils import get_fy
+from backend.services.fy_utils import get_fy, get_fy_list_from_transactions
 from backend.services.excel_generator import generate_workbook
 
 router = APIRouter(prefix="/api/properties", tags=["properties"])
@@ -47,9 +48,20 @@ async def get_property_detail(prop_id: str):
     return prop
 
 
+@router.get("/{prop_id}/fy-list")
+async def get_property_fy_list(prop_id: str):
+    """Return list of FYs that have transaction data for this property."""
+    prop = get_property(prop_id)
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    ledger = load_ledger(prop_id)
+    txs = [{"date": tx.date} for tx in ledger.transactions]
+    return get_fy_list_from_transactions(txs)
+
+
 @router.get("/{prop_id}/summary")
-async def get_property_summary(prop_id: str):
-    """Return current-FY P&L summary and gearing status for a property."""
+async def get_property_summary(prop_id: str, fy: Optional[str] = Query(None, description="FY label e.g. 'FY 2024-25'. Defaults to current FY.")):
+    """Return P&L summary and gearing status for a property, optionally filtered by FY."""
     from datetime import datetime
     from backend.services.ledger import aggregate_by_category_month
     from backend.config import (
@@ -63,8 +75,8 @@ async def get_property_summary(prop_id: str):
         raise HTTPException(status_code=404, detail="Property not found")
 
     agg = aggregate_by_category_month(prop_id)
-    current_fy = get_fy(datetime.now())
-    start_yr, _ = get_fy_year_range(current_fy)
+    selected_fy = fy or get_fy(datetime.now())
+    start_yr, _ = get_fy_year_range(selected_fy)
     months = get_fy_months(start_yr)
 
     # Sum per-category for current FY
@@ -122,7 +134,7 @@ async def get_property_summary(prop_id: str):
 
     return {
         "property": prop,
-        "fy": current_fy,
+        "fy": selected_fy,
         "income": income,
         "income_breakdown": _with_labels(income_breakdown),
         "opex": opex,

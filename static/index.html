@@ -84,7 +84,17 @@
                     </div>
                     <div>
                         <label>Valued As Of</label>
-                        <input type="text" id="prop-value-date" placeholder="e.g. 2025-03" onfocus="this.type='month'" onblur="if(!this.value)this.type='text'" />
+                        <input type="text" id="prop-value-date" placeholder="e.g. 2025-03" onfocus="this.type='month'" onblur="if(!this.value)this.type='text'" onchange="syncDebtDate(this.value)" />
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <label>Debt / Mortgage ($)</label>
+                        <input type="number" id="prop-debt" placeholder="550000" />
+                    </div>
+                    <div>
+                        <label>Debt As Of</label>
+                        <input type="text" id="prop-debt-date" placeholder="e.g. 2025-03" onfocus="this.type='month'" onblur="if(!this.value)this.type='text'" />
                     </div>
                 </div>
                 <div id="prop-form-buttons">
@@ -129,8 +139,13 @@
         <div>
             <h2>4. Portfolio Overview</h2>
             <div class="card">
-                <button onclick="loadPortfolio()">Refresh</button>
-                <div id="portfolio-kpis" style="margin-top: 12px;"></div>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <select id="portfolio-fy" style="width:auto; margin-bottom:0;" onchange="loadPortfolio()">
+                        <option value="">Current FY</option>
+                    </select>
+                    <button onclick="loadPortfolio()">Refresh</button>
+                </div>
+                <div id="portfolio-kpis" style="margin-top: 8px;"></div>
                 <div id="portfolio-view" style="margin-top: 12px;"></div>
             </div>
 
@@ -142,9 +157,19 @@
 
             <h2>6. Property Summary</h2>
             <div class="card">
-                <label>Property</label>
-                <select id="summary-prop"><option value="">— select —</option></select>
-                <button onclick="loadSummary()">Load Summary</button>
+                <div style="display:flex; gap:8px; align-items:end; margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <label>Property</label>
+                        <select id="summary-prop" style="margin-bottom:0;" onchange="loadSummaryFyList()"><option value="">— select —</option></select>
+                    </div>
+                    <div style="flex:1;">
+                        <label>Financial Year</label>
+                        <select id="summary-fy" style="margin-bottom:0;">
+                            <option value="">Current FY</option>
+                        </select>
+                    </div>
+                    <button onclick="loadSummary()" style="margin-bottom:0;">Load</button>
+                </div>
                 <div id="summary-view" style="margin-top: 12px;"></div>
             </div>
 
@@ -203,6 +228,15 @@
         let pendingItems = [];   // all items from upload response, stored in-memory
         let collectedFiles = [];
         let editingPropertyId = null;  // null = create mode, string = edit mode
+
+        // Auto-fill Debt As Of when Valued As Of is set (only on create, and only if Debt As Of is empty)
+        function syncDebtDate(val) {
+            const debtDate = document.getElementById('prop-debt-date');
+            if (val && !debtDate.value && !editingPropertyId) {
+                debtDate.type = 'month';
+                debtDate.value = val;
+            }
+        }
 
         // ── Drop Zone & File Accumulation ────────────────────────────
         const dropZone = document.getElementById('drop-zone');
@@ -270,6 +304,8 @@
                 purchase_date: document.getElementById('prop-purchase-date').value || null,
                 current_value: parseFloat(document.getElementById('prop-value').value) || null,
                 current_value_date: document.getElementById('prop-value-date').value || null,
+                mortgage_balance: parseFloat(document.getElementById('prop-debt').value) || null,
+                mortgage_balance_date: document.getElementById('prop-debt-date').value || null,
             };
             if (!body.short_name || !body.address) {
                 show('prop-status', 'Short name and address are required', 'error');
@@ -306,6 +342,8 @@
                 document.getElementById('prop-purchase-date').value = ''; document.getElementById('prop-purchase-date').type = 'text';
                 document.getElementById('prop-value').value = '';
                 document.getElementById('prop-value-date').value = ''; document.getElementById('prop-value-date').type = 'text';
+                document.getElementById('prop-debt').value = '';
+                document.getElementById('prop-debt-date').value = ''; document.getElementById('prop-debt-date').type = 'text';
             } catch (e) {
                 show('prop-status', `Error: ${e.message}`, 'error');
             }
@@ -323,6 +361,8 @@
                     document.getElementById('prop-purchase-date').type = 'month'; document.getElementById('prop-purchase-date').value = prop.purchase_date || '';
                     document.getElementById('prop-value').value = prop.current_value || '';
                     document.getElementById('prop-value-date').type = 'month'; document.getElementById('prop-value-date').value = prop.current_value_date || '';
+                    document.getElementById('prop-debt').value = prop.mortgage_balance || '';
+                    document.getElementById('prop-debt-date').type = 'month'; document.getElementById('prop-debt-date').value = prop.mortgage_balance_date || '';
                     document.getElementById('prop-form-title').textContent = `Edit Property — ${prop.display_name}`;
                     document.getElementById('btn-save-prop').textContent = 'Save Changes';
                     document.getElementById('btn-cancel-edit').style.display = 'inline-block';
@@ -340,6 +380,8 @@
             document.getElementById('prop-purchase-date').value = ''; document.getElementById('prop-purchase-date').type = 'text';
             document.getElementById('prop-value').value = '';
             document.getElementById('prop-value-date').value = ''; document.getElementById('prop-value-date').type = 'text';
+            document.getElementById('prop-debt').value = '';
+            document.getElementById('prop-debt-date').value = ''; document.getElementById('prop-debt-date').type = 'text';
             document.getElementById('prop-form-title').textContent = '1. Create Property';
             document.getElementById('btn-save-prop').textContent = 'Create Property';
             document.getElementById('btn-cancel-edit').style.display = 'none';
@@ -585,15 +627,29 @@
             show('confirm-status', 'All pending items discarded', 'info');
         }
 
+        async function loadPortfolioFyList() {
+            try {
+                const res = await fetch(`${API}/api/portfolio/fy-list`);
+                const fyList = await res.json();
+                const sel = document.getElementById('portfolio-fy');
+                const current = sel.value;
+                sel.innerHTML = '<option value="">Current FY</option>' +
+                    fyList.map(fy => `<option value="${fy}" ${fy === current ? 'selected' : ''}>${fy}</option>`).join('');
+            } catch(e) {}
+        }
+
         async function loadPortfolio() {
             const fmt = v => '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
             const fmt2 = v => '$' + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            const selectedFy = document.getElementById('portfolio-fy').value;
+            const fyParam = selectedFy ? `?fy=${encodeURIComponent(selectedFy)}` : '';
             try {
-                // Fetch both portfolio data and summary in parallel
+                // Fetch portfolio data, summary, and FY list in parallel
                 const [portRes, sumRes] = await Promise.all([
                     fetch(`${API}/api/portfolio`),
-                    fetch(`${API}/api/portfolio/summary`),
+                    fetch(`${API}/api/portfolio/summary${fyParam}`),
                 ]);
+                loadPortfolioFyList();
                 const data = await portRes.json();
                 const summary = sumRes.ok ? await sumRes.json() : null;
 
@@ -631,10 +687,11 @@
                 }
 
                 // Property table with P&L per property
-                let html = '<table><tr><th>ID</th><th>Name</th><th>Purchase</th><th>Value</th><th>Net P&L</th><th></th></tr>';
+                let html = '<table><tr><th>ID</th><th>Name</th><th>Purchase</th><th>Value</th><th>Debt</th><th>Net P&L</th><th></th></tr>';
                 for (const p of data.properties) {
                     const purchaseInfo = `${fmt(p.purchase_price||0)}` + (p.purchase_date ? `<br><span style="font-size:0.72rem;color:#74777e;">${p.purchase_date}</span>` : '');
                     const valueInfo = `${fmt(p.current_value||0)}` + (p.current_value_date ? `<br><span style="font-size:0.72rem;color:#74777e;">${p.current_value_date}</span>` : '');
+                    const debtInfo = p.mortgage_balance ? `${fmt(p.mortgage_balance)}` + (p.mortgage_balance_date ? `<br><span style="font-size:0.72rem;color:#74777e;">${p.mortgage_balance_date}</span>` : '') : '-';
                     // Find P&L from summary
                     const ps = summary?.properties?.find(s => s.id === p.id);
                     let plCell = '-';
@@ -642,7 +699,7 @@
                         const plColor = ps.net_profit >= 0 ? '#0a6c44' : '#ba1a1a';
                         plCell = `<span style="color:${plColor}; font-weight:600;">${fmt2(ps.net_profit)}</span>`;
                     }
-                    html += `<tr><td>${p.id}</td><td>${p.short_name}<br><span style="font-size:0.72rem;color:#74777e;" title="${p.address}">${(p.address||'').substring(0,25)}${(p.address||'').length>25?'…':''}</span></td><td>${purchaseInfo}</td><td>${valueInfo}</td><td>${plCell}</td><td><button onclick="editProperty('${p.id}')" style="padding:4px 10px; font-size:0.78rem;">Edit</button></td></tr>`;
+                    html += `<tr><td>${p.id}</td><td>${p.short_name}<br><span style="font-size:0.72rem;color:#74777e;" title="${p.address}">${(p.address||'').substring(0,25)}${(p.address||'').length>25?'…':''}</span></td><td>${purchaseInfo}</td><td>${valueInfo}</td><td>${debtInfo}</td><td>${plCell}</td><td><button onclick="editProperty('${p.id}')" style="padding:4px 10px; font-size:0.78rem;">Edit</button></td></tr>`;
                 }
                 html += '</table>';
                 document.getElementById('portfolio-view').innerHTML = html;
@@ -673,11 +730,26 @@
             }
         }
 
+        async function loadSummaryFyList() {
+            const propId = document.getElementById('summary-prop').value;
+            if (!propId) { document.getElementById('summary-fy').innerHTML = '<option value="">Current FY</option>'; return; }
+            try {
+                const res = await fetch(`${API}/api/properties/${propId}/fy-list`);
+                const fyList = await res.json();
+                const sel = document.getElementById('summary-fy');
+                const current = sel.value;
+                sel.innerHTML = '<option value="">Current FY</option>' +
+                    fyList.map(fy => `<option value="${fy}" ${fy === current ? 'selected' : ''}>${fy}</option>`).join('');
+            } catch(e) {}
+        }
+
         async function loadSummary() {
             const propId = document.getElementById('summary-prop').value;
             if (!propId) return;
+            const selectedFy = document.getElementById('summary-fy').value;
+            const fyParam = selectedFy ? `?fy=${encodeURIComponent(selectedFy)}` : '';
             try {
-                const res = await fetch(`${API}/api/properties/${propId}/summary`);
+                const res = await fetch(`${API}/api/properties/${propId}/summary${fyParam}`);
                 const d = await res.json();
                 if (!res.ok) throw new Error(d.detail || 'Failed');
                 const gearingClass = d.net_profit >= 0 ? 'success' : 'error';
