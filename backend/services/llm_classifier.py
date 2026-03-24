@@ -39,7 +39,7 @@ def classify_pdf_content(
         - category: Category key (e.g., "rental_income", "mortgage_interest")
         - description: Brief description of the transaction
         - amount: Transaction amount (numeric or string)
-        - type: "income" or "expense"
+        - type: "income", "expense", or "cash_flow"
         - confidence: Confidence level ("high", "medium", "low")
 
     Raises:
@@ -121,17 +121,27 @@ CLASSIFICATION TASK:
 Extract all financial transactions and expenses from the document above.
 Classify each item into ONE of the following categories:
 
-INCOME CATEGORIES:
-- rental_income: Rental income received
-- other_income: Other property-related income (e.g., parking fees, laundry)
+This system has TWO separate sections in the P&L:
+  (A) P&L SECTION — accrual-basis items (income earned, expenses incurred)
+  (B) CASH FLOW SECTION — actual cash movements (money in/out of bank account)
+
+A single PDF may generate items for BOTH sections. Read the rules carefully.
+
+═══════════════════════════════════════════════
+SECTION A — P&L CATEGORIES (type: "income" or "expense")
+═══════════════════════════════════════════════
+
+INCOME (type = "income"):
+- rental_income: Gross rent charged/earned for the period. Use the RENT AMOUNT, not the net EFT deposit.
+- other_income: Other property-related income (parking fees, laundry, etc.)
 - excess_bill_shares: Recovery of excess utility costs from tenants
 
-OPERATING EXPENSES:
-- management_fees: Property management fees
-- letting_fees: Letting agent fees
-- council_rates: Council/local rates
+OPERATING EXPENSES (type = "expense"):
+- management_fees: Property management fees (percentage of rent collected)
+- letting_fees: Letting/leasing agent fees (one-off for finding a tenant)
+- council_rates: Council/local government rates
 - land_tax: Land tax / payroll tax
-- strata: Strata/body corporate fees (for apartments/units)
+- strata: Strata/body corporate fees (apartments/units)
 - building_insurance: Building and contents insurance
 - maintenance_repairs: Repairs and maintenance
 - cleaning: Cleaning and housekeeping
@@ -139,65 +149,92 @@ OPERATING EXPENSES:
 - miscellaneous: Other operating expenses
 - furnishing_costs: Furnishings and minor fixtures (if deductible)
 
-UTILITIES:
+UTILITIES (type = "expense"):
 - electricity: Electricity costs
 - water: Water and sewerage
 - gas: Gas costs
 - internet: Internet and phone
 
-FINANCING:
-- mortgage_interest: Mortgage interest (only interest, not principal)
+FINANCING (type = "expense"):
+- mortgage_interest: Mortgage interest portion ONLY (not principal)
 - bank_package_fee: Bank package fees
 - bank_service_fee: Bank service fees
 
-CAPITAL ALLOWANCES & DEPRECIATION:
-- depreciation: Depreciation on building/chattels (plant & equipment)
-- capital_works: Capital works deduction (eligible structural improvements)
+CAPITAL ALLOWANCES (type = "expense"):
+- depreciation: Depreciation (Div 40 — Plant & Equipment)
+- capital_works: Capital Works deduction (Div 43 — Building)
 
-CASH FLOW TRACKING:
-- cash_received: Cash received from tenants/other sources
-- utilities_paid: Cash paid for utilities
-- mortgage_repayment: Total mortgage repayment (principal + interest)
-- principal_repaid: Principal amount repaid on mortgage
+═══════════════════════════════════════════════
+SECTION B — CASH FLOW CATEGORIES (type: "cash_flow")
+═══════════════════════════════════════════════
+
+All cash flow items MUST use type = "cash_flow":
+- cash_received: Net cash deposited into owner's bank account (EFT from PM)
+- utilities_paid: Actual cash paid for utility bills
+- mortgage_repayment: Total mortgage repayment (principal + interest combined)
+- principal_repaid: Principal portion of mortgage repayment
 - capex: Capital expenditure (major improvements, replacements)
 
-DEPRECIATION RULES & GUIDELINES:
-1. EXPENSE vs CAPITALISE:
-   - Items under AUD $300 → typically expense
-   - Items over AUD $300 → typically capitalise (add to capital works or depreciation)
-   - Building structural improvements → capital works deduction (straight line, generally)
-   - Plant & equipment depreciation → use diminishing value method
+═══════════════════════════════════════════════
+DOCUMENT-SPECIFIC RULES
+═══════════════════════════════════════════════
 
-2. QUANTITY SURVEYOR (QS) SCHEDULES:
-   - If document references a QS depreciation schedule, extract line items
-   - Use QS schedule amounts if available (authoritative)
-   - Don't double-count: if QS schedule shows total, don't add individual items again
+PROPERTY MANAGEMENT (PM) STATEMENTS:
+A PM statement typically shows rent collected, fees deducted, and net EFT paid to owner.
+Extract BOTH P&L and Cash Flow items:
+  → rental_income (type:"income") = GROSS rent collected (before PM fees)
+  → management_fees (type:"expense") = PM fee amount
+  → letting_fees (type:"expense") = if a letting/leasing fee is shown
+  → cash_received (type:"cash_flow") = NET EFT deposit to owner's account
+  → Any other expenses paid by PM (maintenance, water, etc.) = their respective categories
+IMPORTANT: Use the STATEMENT PERIOD date for rental_income and expenses.
+Use the PAYMENT/EFT date for cash_received.
+Do NOT create cash_received from the rent amount — only from actual EFT/payment lines.
 
-3. DON'T DOUBLE-COUNT:
-   - If a document shows both individual expenses AND a management fee summary, use the summary
-   - If there's both cash paid AND accrued/invoiced amounts, use paid amounts for cash flow
-   - Mortgage: split into mortgage_interest (operating) and principal_repaid (capital)
+UTILITY BILLS (electricity, water, gas, internet):
+Extract BOTH a P&L expense AND a cash flow payment:
+  → electricity/water/gas/internet (type:"expense") = the bill total (incl GST)
+  → utilities_paid (type:"cash_flow") = same amount (the cash outflow)
+Use the bill date or due date for both entries.
+The bill total should be the final "Total" or "Amount Due" including GST.
+
+MORTGAGE / LOAN STATEMENTS:
+  → mortgage_interest (type:"expense") = interest portion only
+  → mortgage_repayment (type:"cash_flow") = total repayment (principal + interest)
+  → principal_repaid (type:"cash_flow") = principal portion
+
+QS / DEPRECIATION SCHEDULES:
+  → depreciation (type:"expense") = Div 40 plant & equipment total
+  → capital_works (type:"expense") = Div 43 building deduction total
+
+═══════════════════════════════════════════════
+ANTI-DOUBLE-COUNTING RULES
+═══════════════════════════════════════════════
+- NEVER create rental_income from the EFT/deposit amount — use gross rent only
+- NEVER create cash_received from the gross rent amount — use net EFT only
+- If a PM statement shows both a line-by-line breakdown AND a summary total, use the summary
+- If the same expense appears as both "incurred" and "paid by PM", extract only ONCE as the expense category
+- Mortgage: split into mortgage_interest (P&L) + mortgage_repayment (cash flow), not both as expense
 
 OUTPUT FORMAT:
 
-Return a JSON array of classification objects. Each object must have:
+Return a JSON array. Each object must have:
 {{
   "date": "YYYY-MM-DD" or null if unavailable,
   "month": "YYYY-MM" or null if unavailable,
   "category": "one of the category keys above",
-  "description": "Brief description of the transaction",
-  "amount": numeric value or string if unclear,
-  "type": "income" or "expense",
-  "confidence": "high", "medium", or "low"
+  "description": "Brief description",
+  "amount": positive numeric value,
+  "type": "income" or "expense" or "cash_flow",
+  "confidence": "high" or "medium" or "low"
 }}
 
-NOTES:
-- If a document date exists, prefer YYYY-MM-DD format. Use month only if date unavailable.
-- Amount should be positive numeric value (don't include negative signs).
-- Type should be "income" for INCOME categories, "expense" for all others.
-- Use "low" confidence for ambiguous items or if text is unclear.
-- Return ONLY valid JSON (no markdown, no extra text).
-- If the document contains no financial data, return an empty array: []
+RULES:
+- Amounts MUST be positive numbers (no negative signs).
+- type MUST be "income" for income categories, "expense" for P&L expense categories, "cash_flow" for cash flow categories.
+- Prefer YYYY-MM-DD date format. Use "month" (YYYY-MM) only if exact date unavailable.
+- Return ONLY valid JSON (no markdown fences, no extra text).
+- If no financial data found, return: []
 
 Begin classification:
 """
