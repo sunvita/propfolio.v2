@@ -4,11 +4,25 @@ Categories, row map, color palette, column layout constants.
 """
 from pathlib import Path
 
+import os
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-UPLOADS_DIR = BASE_DIR / "uploads"
-PARSED_DIR = BASE_DIR / "parsed"
-OUTPUT_DIR = BASE_DIR / "output"
+
+# On Vercel, the filesystem is read-only except /tmp.
+# Use /tmp for writable dirs when VERCEL env var is set.
+_is_vercel = os.environ.get("VERCEL", "")
+
+if _is_vercel:
+    DATA_DIR = Path("/tmp/propfolio/data")
+    UPLOADS_DIR = Path("/tmp/propfolio/uploads")
+    PARSED_DIR = Path("/tmp/propfolio/parsed")
+    OUTPUT_DIR = Path("/tmp/propfolio/output")
+else:
+    DATA_DIR = BASE_DIR / "data"
+    UPLOADS_DIR = BASE_DIR / "uploads"
+    PARSED_DIR = BASE_DIR / "parsed"
+    OUTPUT_DIR = BASE_DIR / "output"
+
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 FY_START_MONTH = 7  # July
