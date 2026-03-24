@@ -13,6 +13,17 @@ class PropertyCreate(BaseModel):
     notes: str = ""
 
 
+class PropertyUpdate(BaseModel):
+    short_name: Optional[str] = None
+    address: Optional[str] = None
+    type: Optional[Literal["residential", "commercial", "industrial"]] = None
+    purchase_price: Optional[float] = None
+    purchase_date: Optional[datetime] = None
+    current_value: Optional[float] = None
+    mortgage_balance: Optional[float] = None
+    notes: Optional[str] = None
+
+
 class Property(BaseModel):
     id: str = Field(..., description="e.g. IP1")
     short_name: str

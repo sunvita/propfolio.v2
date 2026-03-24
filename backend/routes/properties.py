@@ -4,9 +4,9 @@ Property CRUD routes.
 
 from fastapi import APIRouter, HTTPException
 
-from backend.models.schemas import PropertyCreate, Property
+from backend.models.schemas import PropertyCreate, PropertyUpdate, Property
 from backend.services.ledger import (
-    add_property, get_property, list_properties, load_ledger,
+    add_property, get_property, list_properties, load_ledger, update_property,
 )
 from backend.services.fy_utils import get_fy
 from backend.services.excel_generator import generate_workbook
@@ -24,6 +24,18 @@ async def get_all_properties():
 async def create_property(data: PropertyCreate):
     """Create a new property and initialise an empty ledger."""
     return add_property(data)
+
+
+@router.put("/{prop_id}", response_model=Property)
+async def update_property_detail(prop_id: str, data: PropertyUpdate):
+    """Update an existing property's details."""
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    updated = update_property(prop_id, updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Property not found")
+    return updated
 
 
 @router.get("/{prop_id}", response_model=Property)

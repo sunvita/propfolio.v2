@@ -60,7 +60,7 @@
     <div class="grid">
         <!-- Left Column -->
         <div>
-            <h2>1. Create Property</h2>
+            <h2 id="prop-form-title">1. Create Property</h2>
             <div class="card">
                 <label>Short Name</label>
                 <input type="text" id="prop-name" placeholder="e.g. 12 OHC" />
@@ -70,7 +70,10 @@
                 <input type="number" id="prop-price" placeholder="750000" />
                 <label>Current Value ($)</label>
                 <input type="number" id="prop-value" placeholder="820000" />
-                <button onclick="createProperty()">Create Property</button>
+                <div id="prop-form-buttons">
+                    <button onclick="createProperty()" id="btn-save-prop">Create Property</button>
+                    <button onclick="cancelEdit()" id="btn-cancel-edit" class="danger" style="display:none; margin-left:8px;">Cancel</button>
+                </div>
                 <div id="prop-status"></div>
             </div>
 
@@ -158,6 +161,7 @@
         let pendingPropId = '';
         let pendingItems = [];   // all items from upload response, stored in-memory
         let collectedFiles = [];
+        let editingPropertyId = null;  // null = create mode, string = edit mode
 
         // ── Drop Zone & File Accumulation ────────────────────────────
         const dropZone = document.getElementById('drop-zone');
@@ -229,14 +233,29 @@
                 return;
             }
             try {
-                const res = await fetch(`${API}/api/properties/`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(body),
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || 'Failed');
-                show('prop-status', `Created: ${data.display_name} (${data.id})`, 'success');
+                let res, data;
+                if (editingPropertyId) {
+                    // UPDATE mode
+                    res = await fetch(`${API}/api/properties/${editingPropertyId}`, {
+                        method: 'PUT', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(body),
+                    });
+                    data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Failed');
+                    show('prop-status', `Updated: ${data.display_name}`, 'success');
+                    cancelEdit();
+                } else {
+                    // CREATE mode
+                    res = await fetch(`${API}/api/properties/`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(body),
+                    });
+                    data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Failed');
+                    show('prop-status', `Created: ${data.display_name} (${data.id})`, 'success');
+                }
                 refreshPropertySelects();
+                loadPortfolio();
                 // Clear form
                 document.getElementById('prop-name').value = '';
                 document.getElementById('prop-address').value = '';
@@ -245,6 +264,37 @@
             } catch (e) {
                 show('prop-status', `Error: ${e.message}`, 'error');
             }
+        }
+
+        function editProperty(propId) {
+            // Fetch property details and populate the form in edit mode
+            fetch(`${API}/api/properties/${propId}`)
+                .then(r => r.json())
+                .then(prop => {
+                    editingPropertyId = propId;
+                    document.getElementById('prop-name').value = prop.short_name || '';
+                    document.getElementById('prop-address').value = prop.address || '';
+                    document.getElementById('prop-price').value = prop.purchase_price || '';
+                    document.getElementById('prop-value').value = prop.current_value || '';
+                    document.getElementById('prop-form-title').textContent = `Edit Property — ${prop.display_name}`;
+                    document.getElementById('btn-save-prop').textContent = 'Save Changes';
+                    document.getElementById('btn-cancel-edit').style.display = 'inline-block';
+                    // Scroll form into view
+                    document.getElementById('prop-form-title').scrollIntoView({behavior: 'smooth', block: 'start'});
+                })
+                .catch(e => show('prop-status', `Error loading property: ${e.message}`, 'error'));
+        }
+
+        function cancelEdit() {
+            editingPropertyId = null;
+            document.getElementById('prop-name').value = '';
+            document.getElementById('prop-address').value = '';
+            document.getElementById('prop-price').value = '';
+            document.getElementById('prop-value').value = '';
+            document.getElementById('prop-form-title').textContent = '1. Create Property';
+            document.getElementById('btn-save-prop').textContent = 'Create Property';
+            document.getElementById('btn-cancel-edit').style.display = 'none';
+            show('prop-status', '', 'info');
         }
 
         async function refreshPropertySelects() {
@@ -426,9 +476,9 @@
                     document.getElementById('portfolio-view').innerHTML = '<p style="color:#757575">No properties yet.</p>';
                     return;
                 }
-                let html = '<table><tr><th>ID</th><th>Name</th><th>Address</th><th>Purchase</th><th>Value</th></tr>';
+                let html = '<table><tr><th>ID</th><th>Name</th><th>Address</th><th>Purchase</th><th>Value</th><th></th></tr>';
                 for (const p of data.properties) {
-                    html += `<tr><td>${p.id}</td><td>${p.short_name}</td><td>${p.address}</td><td>$${(p.purchase_price||0).toLocaleString()}</td><td>$${(p.current_value||0).toLocaleString()}</td></tr>`;
+                    html += `<tr><td>${p.id}</td><td>${p.short_name}</td><td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${p.address}">${p.address}</td><td>$${(p.purchase_price||0).toLocaleString()}</td><td>$${(p.current_value||0).toLocaleString()}</td><td><button onclick="editProperty('${p.id}')" style="padding:4px 10px; font-size:0.78rem;">Edit</button></td></tr>`;
                 }
                 html += '</table>';
                 document.getElementById('portfolio-view').innerHTML = html;

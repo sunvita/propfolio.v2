@@ -71,6 +71,26 @@ def add_property(data: PropertyCreate) -> Property:
     return property_obj
 
 
+def update_property(prop_id: str, updates: dict) -> Optional[Property]:
+    """Update an existing property's fields. Returns updated property or None if not found."""
+    portfolio = load_portfolio()
+    for i, prop in enumerate(portfolio.properties):
+        if prop.id == prop_id:
+            prop_dict = prop.model_dump()
+            for key, value in updates.items():
+                if value is not None and key in prop_dict:
+                    prop_dict[key] = value
+            # Rebuild display_name if short_name changed
+            if "short_name" in updates and updates["short_name"] is not None:
+                num = prop_id.replace("IP", "")
+                prop_dict["display_name"] = f"IP#{num} — {updates['short_name']}"
+            updated_prop = Property.model_validate(prop_dict)
+            portfolio.properties[i] = updated_prop
+            save_portfolio(portfolio)
+            return updated_prop
+    return None
+
+
 def get_property(prop_id: str) -> Optional[Property]:
     portfolio = load_portfolio()
     for prop in portfolio.properties:
