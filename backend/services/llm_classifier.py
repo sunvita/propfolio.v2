@@ -199,17 +199,22 @@ STEP 2: On a PM statement, is the water amount in a DEDUCTIONS / DISBURSEMENTS /
         → water (type:"expense"). This is the PM paying a water bill on the owner's behalf.
 
 STEP 3: On a PM statement, is the water amount in an INCOME / RECEIPTS / CREDITS section
-        (i.e., it INCREASES the net payment to owner)?
-        → excess_bill_shares (type:"income"). This is a tenant reimbursement.
+        (i.e., it INCREASES the net payment to owner), OR does the water amount ADD to the
+        total paid to the owner (verify with arithmetic: Gross Rent − PM Fees + water = EFT)?
+        → other_income (type:"income"). This is a tenant water reimbursement credited to owner.
 
-STEP 4: If the section is ambiguous, use ARITHMETIC:
+STEP 4: If the section is ambiguous, use ARITHMETIC to verify:
         Net EFT = Gross Rent − PM Fees − [this water amount] → it's an EXPENSE (water)
-        Net EFT = Gross Rent − PM Fees + [this water amount] → it's INCOME (excess_bill_shares)
+        Net EFT = Gross Rent − PM Fees + [this water amount] → it's INCOME (other_income)
 
 IMPORTANT: You MUST be consistent. Within a SINGLE PM statement, if water appears in the
 deductions column, it is ALWAYS an expense. If it appears as a credit/receipt, it is ALWAYS
-income. Do NOT classify the same type of water line differently across statements from the
-same property manager unless the actual direction differs.
+income (other_income). Do NOT classify the same type of water line differently across
+statements from the same property manager unless the actual direction differs.
+
+CRITICAL: Many Australian PM statements show water as a CREDIT (tenant reimbursement to
+landlord). If the PM statement math shows: Rent − Fees + Water = EFT paid to owner, then
+water is other_income, NOT an expense. ALWAYS verify with the arithmetic.
 
 DEFAULT: If you truly cannot determine direction, classify as water (type:"expense") with
 confidence:"low".
@@ -231,6 +236,15 @@ MORTGAGE / LOAN STATEMENTS:
 If the document shows total repayment and interest but NOT the principal explicitly,
 calculate it: principal_repaid = mortgage_repayment − mortgage_interest.
 Always emit all three items for each period where mortgage data is available.
+
+CRITICAL — RECOGNISING MORTGAGE DATA:
+- Bank/lender statements often show "Interest Charged", "Repayment", "Principal",
+  "Home Loan", "Mortgage", "Loan Account" — these are ALL mortgage items, not miscellaneous.
+- If a document is from a bank (CBA, ANZ, NAB, Westpac, Macquarie, ING, Suncorp, etc.)
+  and shows interest charges and repayments, classify them as mortgage items, NOT miscellaneous.
+- Insurance deducted from a loan account → building_insurance (type:"expense")
+- Annual/monthly loan fees → bank_package_fee or bank_service_fee (type:"expense")
+- Do NOT put large recurring bank charges into "miscellaneous" — identify what they are.
 
 QS / DEPRECIATION SCHEDULES:
   → depreciation (type:"expense") = Div 40 plant & equipment total

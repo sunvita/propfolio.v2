@@ -625,6 +625,8 @@
                 pendingItems = [];
                 pendingIds = [];
                 renderPendingItems();
+                // Refresh portfolio to pick up new transactions (FY list, P&L)
+                loadPortfolio();
             } catch (e) {
                 show('confirm-status', `Error: ${e.message}`, 'error');
             }
