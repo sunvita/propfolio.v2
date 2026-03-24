@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Propfolio - Reports</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@400;500&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "error": "#ba1a1a",
+              "on-tertiary-fixed-variant": "#3c475a",
+              "surface-dim": "#d7dadc",
+              "tertiary": "#091425",
+              "on-tertiary-fixed": "#111c2c",
+              "on-secondary-container": "#167249",
+              "primary-container": "#102a43",
+              "on-error-container": "#93000a",
+              "surface-container": "#ebeef0",
+              "tertiary-fixed-dim": "#bcc7dd",
+              "surface-container-high": "#e5e9eb",
+              "on-background": "#181c1e",
+              "on-secondary-fixed": "#002111",
+              "background": "#f7fafc",
+              "primary": "#00152a",
+              "surface-tint": "#49607c",
+              "on-tertiary-container": "#8590a5",
+              "on-primary-fixed": "#011d35",
+              "on-surface": "#181c1e",
+              "inverse-on-surface": "#eef1f3",
+              "on-primary": "#ffffff",
+              "on-primary-fixed-variant": "#314863",
+              "primary-fixed": "#d1e4ff",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f7fafc",
+              "secondary": "#0a6c44",
+              "inverse-primary": "#b0c9e8",
+              "inverse-surface": "#2d3133",
+              "surface-variant": "#e0e3e5",
+              "outline-variant": "#c3c6ce",
+              "secondary-fixed": "#9ff5c1",
+              "on-primary-container": "#7a92b0",
+              "surface-container-low": "#f1f4f6",
+              "on-surface-variant": "#43474d",
+              "secondary-fixed-dim": "#83d8a6",
+              "surface": "#f7fafc",
+              "on-secondary": "#ffffff",
+              "on-secondary-fixed-variant": "#005231",
+              "surface-container-highest": "#e0e3e5",
+              "secondary-container": "#9ff5c1",
+              "on-tertiary": "#ffffff",
+              "error-container": "#ffdad6",
+              "on-error": "#ffffff",
+              "tertiary-fixed": "#d8e3fa",
+              "outline": "#74777e",
+              "tertiary-container": "#1e293a",
+              "primary-fixed-dim": "#b0c9e8"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Work Sans"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      body { font-family: 'Work Sans', sans-serif; }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-slate-50/80 backdrop-blur-md shadow-sm flex justify-between items-center px-6 h-16 w-full">
+<div class="text-2xl font-black tracking-tighter text-slate-900">Propfolio</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-slate-900" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-slate-900" data-icon="settings">settings</span>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="Professional user portrait for profile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmPn4Cpghk8ysxDwsnKD3agkw6GKBwvt7fuUC4F3xSRPAZtmYvob9hPk1fSEna0kFsZShV5ryko8Qcig-_ISdHZ6az0LF8GSJw3gkQij4Tz-uibbfdDQTZiOHChakG2nT7fNXJrotHCw1SoydEe62CJ112Mfablw9wLjLfjSeU7qM9pE7w5zhBxGr2E-_aefiIfr4BIN7MEtN7olhusVdSj62HzjsRTE-pvmle8rsSKBS8X7NZjFP9hN8MR0aapsWB7t3s96MMjvM"/>
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<main class="pt-20 px-6 font-body">
+<!-- Header Section -->
+<section class="mb-8">
+<h1 class="font-headline font-extrabold text-3xl text-primary tracking-tight mb-2">Reports</h1>
+<p class="text-on-surface-variant text-sm">Review performance across your sovereign portfolio.</p>
+</section>
+<!-- Reporting Cycle Selector (Bento Style) -->
+<section class="grid grid-cols-2 gap-4 mb-8">
+<div class="col-span-2 bg-surface-container-lowest p-6 rounded-xl border-b-2 border-secondary/10">
+<div class="flex justify-between items-center mb-4">
+<span class="font-label text-xs font-semibold uppercase tracking-widest text-on-surface-variant">Active Cycle</span>
+<span class="material-symbols-outlined text-secondary" data-icon="calendar_today">calendar_today</span>
+</div>
+<div class="font-headline font-bold text-xl text-primary">Q3 Fiscal Year 2024</div>
+<div class="font-label text-sm text-secondary font-medium mt-1">+12.4% vs last period</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-primary-container" data-icon="update">update</span>
+<div>
+<div class="font-headline font-bold text-lg text-primary">Monthly</div>
+<div class="font-label text-xs text-on-surface-variant">Last 30 Days</div>
+</div>
+</div>
+<div class="bg-primary text-on-primary p-4 rounded-xl flex flex-col justify-between aspect-square shadow-lg">
+<span class="material-symbols-outlined text-secondary-fixed" data-icon="analytics" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<div>
+<div class="font-headline font-bold text-lg">Quarterly</div>
+<div class="font-label text-xs opacity-70">Current Phase</div>
+</div>
+</div>
+</section>
+<!-- Quick Metrics (Asymmetric Editorial Style) -->
+<section class="mb-8">
+<div class="flex items-baseline justify-between mb-4">
+<h2 class="font-headline font-bold text-lg text-primary">Key Metrics</h2>
+<span class="font-label text-[10px] uppercase font-bold text-secondary">Live Ledger</span>
+</div>
+<div class="space-y-4">
+<div class="bg-surface-container-low p-5 rounded-xl flex items-center justify-between">
+<div>
+<div class="text-[10px] font-label uppercase tracking-tighter text-on-surface-variant">Total Yield</div>
+<div class="text-xl font-headline font-bold text-primary">$42,890.00</div>
+</div>
+<div class="bg-secondary-container text-on-secondary-fixed-variant px-3 py-1 rounded-full text-xs font-bold">
+                        +8.2%
+                    </div>
+</div>
+<div class="bg-surface-container-low p-5 rounded-xl flex items-center justify-between">
+<div>
+<div class="text-[10px] font-label uppercase tracking-tighter text-on-surface-variant">Asset Appreciation</div>
+<div class="text-xl font-headline font-bold text-primary">$156,200.00</div>
+</div>
+<div class="bg-secondary-container text-on-secondary-fixed-variant px-3 py-1 rounded-full text-xs font-bold">
+                        +14.1%
+                    </div>
+</div>
+</div>
+</section>
+<!-- Export Action Card -->
+<section class="bg-tertiary-container p-6 rounded-2xl relative overflow-hidden mb-12">
+<div class="relative z-10">
+<h3 class="font-headline font-bold text-on-primary text-xl mb-2">Export Data</h3>
+<p class="text-on-tertiary-container text-sm mb-6 leading-relaxed">Generate a comprehensive Excel ledger including all property valuation histories and tax summaries.</p>
+<button class="w-full bg-gradient-to-br from-secondary to-on-secondary-container text-on-primary font-headline font-bold py-4 rounded-xl flex items-center justify-center gap-3 active:scale-95 transition-transform">
+<span class="material-symbols-outlined" data-icon="cloud_upload">cloud_upload</span>
+                    Export Excel
+                </button>
+</div>
+<!-- Decorative Gradient Shape -->
+<div class="absolute -right-8 -top-8 w-32 h-32 bg-secondary opacity-20 blur-3xl rounded-full"></div>
+</section>
+<!-- Recent Logs (Tonal shift separation, no borders) -->
+<section class="mb-6">
+<h3 class="font-headline font-bold text-lg text-primary mb-4">Recent Reports</h3>
+<div class="space-y-2">
+<div class="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="description">description</span>
+</div>
+<div class="flex-1">
+<div class="font-headline font-semibold text-sm text-primary">Annual_Tax_Summary_2023.xlsx</div>
+<div class="font-label text-[10px] text-on-surface-variant">Generated Dec 24, 2023 • 2.4 MB</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="download">download</span>
+</div>
+<div class="flex items-center gap-4 p-4 bg-surface-container-low rounded-xl">
+<div class="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="assessment">assessment</span>
+</div>
+<div class="flex-1">
+<div class="font-headline font-semibold text-sm text-primary">Q2_Performance_Ledger.xlsx</div>
+<div class="font-label text-[10px] text-on-surface-variant">Generated Oct 12, 2023 • 1.8 MB</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="download">download</span>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 py-3 pb-safe bg-white/90 backdrop-blur-xl z-50 md:hidden rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] border-t border-slate-200/20">
+<div class="flex flex-col items-center justify-center text-slate-400 tap-highlight-transparent transition-all duration-300 ease-out">
+<span class="material-symbols-outlined mb-1" data-icon="dashboard">dashboard</span>
+<span class="font-label text-[10px] font-medium uppercase tracking-tighter">Dashboard</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 tap-highlight-transparent transition-all duration-300 ease-out">
+<span class="material-symbols-outlined mb-1" data-icon="domain">domain</span>
+<span class="font-label text-[10px] font-medium uppercase tracking-tighter">Properties</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 tap-highlight-transparent transition-all duration-300 ease-out">
+<span class="material-symbols-outlined mb-1" data-icon="cloud_upload">cloud_upload</span>
+<span class="font-label text-[10px] font-medium uppercase tracking-tighter">Upload</span>
+</div>
+<div class="flex flex-col items-center justify-center text-emerald-700 scale-110 tap-highlight-transparent transition-all duration-300 ease-out">
+<span class="material-symbols-outlined mb-1" data-icon="assessment" style="font-variation-settings: 'FILL' 1;">assessment</span>
+<span class="font-label text-[10px] font-medium uppercase tracking-tighter">Reports</span>
+</div>
+<div class="flex flex-col items-center justify-center text-slate-400 tap-highlight-transparent transition-all duration-300 ease-out">
+<span class="material-symbols-outlined mb-1" data-icon="person">person</span>
+<span class="font-label text-[10px] font-medium uppercase tracking-tighter">Profile</span>
+</div>
+</nav>
+</body></html>
