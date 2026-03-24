@@ -29,6 +29,23 @@
         .badge-green { background: #9ff5c1; color: #0a6c44; }
         .badge-red { background: #ffcdd2; color: #b71c1c; }
         .file-count { font-size: 0.8rem; color: #43474d; margin-bottom: 8px; }
+        /* Drop zone */
+        .drop-zone { border: 2px dashed #c5ccd3; border-radius: 12px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.2s; background: #fafbfc; margin-bottom: 12px; }
+        .drop-zone:hover { border-color: #0a6c44; background: #f0f9f4; }
+        .drop-zone.drag-over { border-color: #0a6c44; background: #e0f2e9; box-shadow: 0 0 0 3px rgba(10,108,68,0.15); }
+        .drop-zone-icon { font-size: 2rem; margin-bottom: 6px; }
+        .drop-zone-text { font-size: 0.85rem; color: #43474d; }
+        .drop-zone-text b { color: #0a6c44; }
+        .file-list { list-style: none; padding: 0; margin: 0 0 12px 0; }
+        .file-list li { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #f7fafc; border-radius: 8px; margin-bottom: 4px; font-size: 0.82rem; }
+        .file-list li .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #181c1e; }
+        .file-list li .fsize { color: #757575; margin: 0 8px; white-space: nowrap; }
+        .file-list li .fremove { background: none; border: none; color: #ba1a1a; cursor: pointer; font-size: 1rem; padding: 0 4px; line-height: 1; }
+        .file-list li .fremove:hover { color: #ff1744; }
+        /* Progress bar */
+        .progress-wrap { width: 100%; background: #ebeef0; border-radius: 8px; overflow: hidden; height: 6px; margin-top: 8px; display: none; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #0a6c44, #14a76c); border-radius: 8px; width: 0%; transition: width 0.4s ease; }
+        .progress-text { font-size: 0.78rem; color: #43474d; margin-top: 4px; display: none; }
         /* Google Places autocomplete dropdown styling */
         .pac-container { border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: 'Inter', sans-serif; z-index: 10000; }
         .pac-item { padding: 8px 12px; font-size: 0.85rem; cursor: pointer; }
@@ -61,10 +78,19 @@
             <div class="card">
                 <label>Property</label>
                 <select id="prop-select"><option value="">— loading —</option></select>
-                <label>PDF Files (select one or more)</label>
-                <input type="file" id="pdf-file" accept=".pdf" multiple />
+
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-icon">📄</div>
+                    <div class="drop-zone-text"><b>Drag & drop</b> PDF files here<br>or <b>click to browse</b></div>
+                </div>
+                <input type="file" id="pdf-file" accept=".pdf" multiple style="display:none;" />
+
+                <ul id="file-list" class="file-list"></ul>
                 <div id="file-count" class="file-count"></div>
-                <button onclick="uploadPdfs()">Upload & Classify</button>
+
+                <button onclick="uploadPdfs()" id="btn-upload" style="display:none;">Upload & Classify</button>
+                <div class="progress-wrap" id="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+                <div class="progress-text" id="progress-text"></div>
                 <div id="upload-status"></div>
             </div>
 
@@ -129,13 +155,65 @@
     <script>
         const API = '';
         let pendingIds = [];
+        let collectedFiles = [];
 
-        // File input counter
-        document.getElementById('pdf-file').addEventListener('change', function() {
-            const count = this.files.length;
-            document.getElementById('file-count').textContent =
-                count > 0 ? `${count} file${count > 1 ? 's' : ''} selected` : '';
+        // ── Drop Zone & File Accumulation ────────────────────────────
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('pdf-file');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            addFiles(e.dataTransfer.files);
         });
+        fileInput.addEventListener('change', () => {
+            addFiles(fileInput.files);
+            fileInput.value = '';
+        });
+
+        function addFiles(fileListObj) {
+            for (const f of fileListObj) {
+                if (!f.name.toLowerCase().endsWith('.pdf')) continue;
+                if (collectedFiles.some(ex => ex.name === f.name && ex.size === f.size)) continue;
+                collectedFiles.push(f);
+            }
+            renderFileList();
+        }
+
+        function removeFile(idx) {
+            collectedFiles.splice(idx, 1);
+            renderFileList();
+        }
+
+        function renderFileList() {
+            const ul = document.getElementById('file-list');
+            if (!collectedFiles.length) {
+                ul.innerHTML = '';
+                document.getElementById('file-count').textContent = '';
+                document.getElementById('btn-upload').style.display = 'none';
+                return;
+            }
+            ul.innerHTML = collectedFiles.map((f, i) => {
+                const sizeKB = (f.size / 1024).toFixed(0);
+                return `<li><span class="fname">${f.name}</span><span class="fsize">${sizeKB} KB</span><button class="fremove" onclick="removeFile(${i})" title="Remove">&times;</button></li>`;
+            }).join('');
+            document.getElementById('file-count').textContent = `${collectedFiles.length} file${collectedFiles.length > 1 ? 's' : ''} ready`;
+            document.getElementById('btn-upload').style.display = 'inline-block';
+        }
+
+        function setProgress(pct, text) {
+            const wrap = document.getElementById('progress-wrap');
+            const bar = document.getElementById('progress-bar');
+            const txt = document.getElementById('progress-text');
+            if (pct < 0) { wrap.style.display = 'none'; txt.style.display = 'none'; return; }
+            wrap.style.display = 'block';
+            bar.style.width = Math.min(pct, 100) + '%';
+            txt.style.display = 'block';
+            txt.textContent = text || '';
+        }
 
         async function createProperty() {
             const body = {
@@ -179,42 +257,34 @@
 
         async function uploadPdfs() {
             const propId = document.getElementById('prop-select').value;
-            const fileInput = document.getElementById('pdf-file');
-            if (!propId) {
-                show('upload-status', 'Select a property first', 'error');
-                return;
-            }
-            if (!fileInput.files.length) {
-                show('upload-status', 'Select at least one PDF file', 'error');
-                return;
-            }
+            if (!propId) { show('upload-status', 'Select a property first', 'error'); return; }
+            if (!collectedFiles.length) { show('upload-status', 'Add at least one PDF file', 'error'); return; }
 
-            const fileCount = fileInput.files.length;
-            show('upload-status', `Uploading & classifying ${fileCount} file${fileCount > 1 ? 's' : ''}...`, 'info');
+            const totalFiles = collectedFiles.length;
+            document.getElementById('btn-upload').disabled = true;
+            setProgress(5, `Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''}...`);
+            show('upload-status', '', 'info');
 
             const form = new FormData();
-            for (let i = 0; i < fileInput.files.length; i++) {
-                form.append('files', fileInput.files[i]);
-            }
+            for (const f of collectedFiles) form.append('files', f);
 
             try {
+                setProgress(15, `Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''} to server...`);
+
                 const res = await fetch(`${API}/api/upload/${propId}`, {method: 'POST', body: form});
+                setProgress(60, 'Server is parsing & classifying with AI...');
+
                 const text = await res.text();
+                setProgress(85, 'Processing results...');
 
                 let data;
-                try {
-                    data = JSON.parse(text);
-                } catch(e) {
-                    throw new Error(`Server error: ${text.substring(0, 200)}`);
-                }
+                try { data = JSON.parse(text); } catch(e) { throw new Error(`Server error: ${text.substring(0, 200)}`); }
 
                 if (!res.ok) {
-                    const detail = typeof data.detail === 'string' ? data.detail :
-                        (data.detail?.message || JSON.stringify(data.detail));
+                    const detail = typeof data.detail === 'string' ? data.detail : (data.detail?.message || JSON.stringify(data.detail));
                     throw new Error(detail);
                 }
 
-                // Collect pending IDs from all results
                 pendingIds = [];
                 let totalItems = 0;
                 const allResults = data.results || [data];
@@ -233,29 +303,34 @@
                     html += '<table><tr><th>Date</th><th>Category</th><th>Amount</th><th>Type</th><th>Conf</th></tr>';
                     for (const item of result.items) {
                         const conf = item.confidence >= 0.8 ? '&#x1f7e2;' : item.confidence >= 0.5 ? '&#x1f7e1;' : '&#x1f534;';
-                        html += `<tr><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${item.type === 'income' ? 'badge-green' : 'badge-red'}">${item.type}</span></td><td>${conf}</td></tr>`;
+                        const typeClass = item.type === 'income' ? 'badge-green' : 'badge-red';
+                        html += `<tr><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${typeClass}">${item.type}</span></td><td>${conf}</td></tr>`;
                     }
                     html += '</table>';
                 }
 
-                // Show errors if any
                 if (data.errors && data.errors.length) {
                     html += '<div class="status error" style="margin-top:8px;">';
-                    for (const err of data.errors) {
-                        html += `${err.filename}: ${err.error}<br>`;
-                    }
+                    for (const err of data.errors) html += `${err.filename}: ${err.error}<br>`;
                     html += '</div>';
                 }
 
+                setProgress(100, 'Done!');
                 show('upload-status', statusMsg || `Classified ${totalItems} items from ${allResults.length} file(s)`, 'success');
                 document.getElementById('pending-items').innerHTML = html;
                 document.getElementById('btn-confirm').style.display = 'inline-block';
                 document.getElementById('btn-discard').style.display = 'inline-block';
-                fileInput.value = '';
-                document.getElementById('file-count').textContent = '';
+
+                // Clear collected files
+                collectedFiles = [];
+                renderFileList();
+                setTimeout(() => setProgress(-1), 3000);
 
             } catch (e) {
+                setProgress(-1);
                 show('upload-status', `Error: ${e.message}`, 'error');
+            } finally {
+                document.getElementById('btn-upload').disabled = false;
             }
         }
 
