@@ -3,8 +3,8 @@ uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 openpyxl==3.1.5
 anthropic==0.43.0
+opendataloader-pdf>=0.9.0
 pydantic==2.10.4
 python-dotenv==1.0.1
-# opendataloader-pdf[hybrid] — too large for Vercel serverless (5GB+).
-# Install locally: pip install "opendataloader-pdf[hybrid]>=0.9.0"
-# The app falls back to pdftotext or manual paste when unavailable.
+# For local dev with OCR + ML table detection, install the hybrid extra:
+#   pip install "opendataloader-pdf[hybrid]>=0.9.0"
