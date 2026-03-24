@@ -227,6 +227,7 @@
         let pendingItems = [];   // all items from upload response, stored in-memory
         let collectedFiles = [];
         let editingPropertyId = null;  // null = create mode, string = edit mode
+        let cachedProperties = [];     // cached from loadPortfolio() for Vercel /tmp workaround
 
         // Auto-fill Debt As Of when Valued As Of is set (only on create, and only if Debt As Of is empty)
         function syncDebtDate(val) {
@@ -349,26 +350,22 @@
         }
 
         function editProperty(propId) {
-            // Fetch property details and populate the form in edit mode
-            fetch(`${API}/api/properties/${propId}`)
-                .then(r => r.json())
-                .then(prop => {
-                    editingPropertyId = propId;
-                    document.getElementById('prop-name').value = prop.short_name || '';
-                    document.getElementById('prop-address').value = prop.address || '';
-                    document.getElementById('prop-price').value = prop.purchase_price || '';
-                    document.getElementById('prop-purchase-date').type = 'month'; document.getElementById('prop-purchase-date').value = prop.purchase_date || '';
-                    document.getElementById('prop-value').value = prop.current_value || '';
-                    document.getElementById('prop-value-date').type = 'month'; document.getElementById('prop-value-date').value = prop.current_value_date || '';
-                    document.getElementById('prop-debt').value = prop.mortgage_balance || '';
-                    document.getElementById('prop-debt-date').type = 'month'; document.getElementById('prop-debt-date').value = prop.mortgage_balance_date || '';
-                    document.getElementById('prop-form-title').textContent = `Edit Property — ${prop.display_name}`;
-                    document.getElementById('btn-save-prop').textContent = 'Save Changes';
-                    document.getElementById('btn-cancel-edit').style.display = 'inline-block';
-                    // Scroll form into view
-                    document.getElementById('prop-form-title').scrollIntoView({behavior: 'smooth', block: 'start'});
-                })
-                .catch(e => show('prop-status', `Error loading property: ${e.message}`, 'error'));
+            // Use cached property data (no extra API call = no Vercel /tmp isolation issue)
+            const prop = cachedProperties.find(p => p.id === propId);
+            if (!prop) { show('prop-status', 'Property not found in cache. Try refreshing.', 'error'); return; }
+            editingPropertyId = propId;
+            document.getElementById('prop-name').value = prop.short_name || '';
+            document.getElementById('prop-address').value = prop.address || '';
+            document.getElementById('prop-price').value = prop.purchase_price || '';
+            document.getElementById('prop-purchase-date').type = 'month'; document.getElementById('prop-purchase-date').value = prop.purchase_date || '';
+            document.getElementById('prop-value').value = prop.current_value || '';
+            document.getElementById('prop-value-date').type = 'month'; document.getElementById('prop-value-date').value = prop.current_value_date || '';
+            document.getElementById('prop-debt').value = prop.mortgage_balance || '';
+            document.getElementById('prop-debt-date').type = 'month'; document.getElementById('prop-debt-date').value = prop.mortgage_balance_date || '';
+            document.getElementById('prop-form-title').textContent = `Edit Property — ${prop.display_name}`;
+            document.getElementById('btn-save-prop').textContent = 'Save Changes';
+            document.getElementById('btn-cancel-edit').style.display = 'inline-block';
+            document.getElementById('prop-form-title').scrollIntoView({behavior: 'smooth', block: 'start'});
         }
 
         function cancelEdit() {
@@ -443,12 +440,9 @@
             let dupCount = 0;
             let filesProcessed = 0;
 
-            // Fetch property data to send with upload (Vercel /tmp isolation workaround)
-            let propertyJson = null;
-            try {
-                const propRes = await fetch(`${API}/api/properties/${propId}`);
-                if (propRes.ok) propertyJson = JSON.stringify(await propRes.json());
-            } catch(e) {}
+            // Use cached property data for Vercel /tmp isolation workaround (no extra API call)
+            const cachedProp = cachedProperties.find(p => p.id === propId);
+            const propertyJson = cachedProp ? JSON.stringify(cachedProp) : null;
 
             try {
                 for (let b = 0; b < batches.length; b++) {
@@ -615,12 +609,9 @@
                     return copy;
                 });
 
-                // Fetch property data for Vercel /tmp isolation workaround
-                let confirmPropJson = null;
-                try {
-                    const cpRes = await fetch(`${API}/api/properties/${pendingPropId}`);
-                    if (cpRes.ok) confirmPropJson = JSON.stringify(await cpRes.json());
-                } catch(e) {}
+                // Use cached property data for Vercel /tmp isolation workaround
+                const confirmProp = cachedProperties.find(p => p.id === pendingPropId);
+                const confirmPropJson = confirmProp ? JSON.stringify(confirmProp) : null;
 
                 const res = await fetch(`${API}/api/upload/confirm-items/${pendingPropId}`, {
                     method: 'POST',
@@ -656,8 +647,9 @@
                 const res = await fetch(`${API}/api/portfolio${fyParam}`);
                 const data = await res.json();
 
-                // Update all property dropdowns from the same response
-                updatePropertySelects(data.properties || []);
+                // Cache properties for upload/confirm bootstrap and update dropdowns
+                cachedProperties = data.properties || [];
+                updatePropertySelects(cachedProperties);
 
                 // Update FY dropdown
                 const fyList = data.fy_list || [];
