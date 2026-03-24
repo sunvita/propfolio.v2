@@ -187,13 +187,27 @@ Extract BOTH P&L and Cash Flow items:
   → letting_fees (type:"expense") = if a letting/leasing fee is shown
   → cash_received (type:"cash_flow") = NET EFT deposit to owner's account
   → maintenance, repairs, cleaning etc. = their respective EXPENSE categories
-WATER/UTILITIES ON PM STATEMENTS: When a PM statement shows water or other utility
-charges deducted from rent, these are almost always TENANT REIMBURSEMENTS (the tenant
-pays the owner back for excess water usage). Classify these as:
-  → excess_bill_shares (type:"income") = water/utility recovery from tenant
-Do NOT classify water on PM statements as a "water" expense — it is income.
-Only classify water as an expense (category:"water") when it comes from a standalone
-water/utility bill issued by a water authority (e.g., Water Corporation, Sydney Water).
+WATER/UTILITIES ON PM STATEMENTS — READ CAREFULLY:
+Water and utility charges on PM statements can be EITHER an expense OR income depending
+on context. You MUST determine the direction from the statement layout:
+
+(a) DEDUCTED from owner (reduces net payment) → This means the PM paid a water/utility
+    bill on behalf of the owner. It is an EXPENSE to the owner.
+    → water (type:"expense") — or electricity/gas as appropriate
+    Clues: appears in "Disbursements", "Expenses", "Payments Out", "Deductions" section;
+    listed alongside management fees and other costs; labelled "Water Rates", "Water Usage",
+    "Water Corp invoice", or similar; reduces the net EFT to the owner.
+
+(b) ADDED to owner (increases net payment) → This means the tenant reimbursed the owner
+    for excess water/utility usage. It is INCOME to the owner.
+    → excess_bill_shares (type:"income")
+    Clues: appears in "Income", "Receipts", "Credits" section; labelled "Tenant water
+    reimbursement", "Excess water recovery", "Water recovery from tenant", "Water
+    contribution"; increases the net EFT to the owner.
+
+If unclear, look at whether the amount INCREASES or DECREASES the net payment to owner.
+Standalone water authority bills (Water Corporation, Sydney Water, etc.) are always
+water (type:"expense").
 IMPORTANT: Use the STATEMENT PERIOD date for rental_income and expenses.
 Use the PAYMENT/EFT date for cash_received.
 Do NOT create cash_received from the rent amount — only from actual EFT/payment lines.
