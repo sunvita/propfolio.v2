@@ -8,8 +8,9 @@ class PropertyCreate(BaseModel):
     address: str
     type: Literal["residential", "commercial", "industrial"] = "residential"
     purchase_price: Optional[float] = None
-    purchase_date: Optional[datetime] = None
+    purchase_date: Optional[str] = None
     current_value: Optional[float] = None
+    current_value_date: Optional[str] = None
     notes: str = ""
 
 
@@ -18,8 +19,9 @@ class PropertyUpdate(BaseModel):
     address: Optional[str] = None
     type: Optional[Literal["residential", "commercial", "industrial"]] = None
     purchase_price: Optional[float] = None
-    purchase_date: Optional[datetime] = None
+    purchase_date: Optional[str] = None
     current_value: Optional[float] = None
+    current_value_date: Optional[str] = None
     mortgage_balance: Optional[float] = None
     notes: Optional[str] = None
 
@@ -32,8 +34,9 @@ class Property(BaseModel):
     type: Literal["residential", "commercial", "industrial"] = "residential"
     units: int = 1
     purchase_price: Optional[float] = None
-    purchase_date: Optional[datetime] = None
+    purchase_date: Optional[str] = None
     current_value: Optional[float] = None
+    current_value_date: Optional[str] = None
     mortgage_balance: Optional[float] = None
     thumbnail: Optional[str] = None
     notes: str = ""
