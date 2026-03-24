@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+uploads/*
+!uploads/.gitkeep
+parsed/*
+!parsed/.gitkeep
+output/*
+!output/.gitkeep
+data/*.json
+!data/portfolio_sample.json
+node_modules/
+.next/
+*.xlsx
+!templates/*.xlsx

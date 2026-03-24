@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Propfolio AU — Test Console</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: #f7fafc; color: #181c1e; padding: 24px; }
+        h1 { font-family: 'Manrope', sans-serif; color: #00152a; margin-bottom: 8px; font-size: 1.5rem; }
+        h2 { color: #00152a; margin: 24px 0 12px; font-size: 1.1rem; border-bottom: 2px solid #ebeef0; padding-bottom: 6px; }
+        .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        label { display: block; font-weight: 500; margin-bottom: 4px; font-size: 0.85rem; color: #43474d; }
+        input, select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; margin-bottom: 12px; }
+        button { background: #00152a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 500; }
+        button:hover { background: #102a43; }
+        button.secondary { background: #0a6c44; }
+        button.danger { background: #ba1a1a; }
+        .status { padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 0.85rem; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+        .success { background: #ebf5eb; color: #1b5e20; }
+        .error { background: #fff5f5; color: #b71c1c; }
+        .info { background: #ebf3fb; color: #1a237e; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { padding: 6px 10px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f1f4f6; font-weight: 600; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+        .badge-green { background: #9ff5c1; color: #0a6c44; }
+        .badge-red { background: #ffcdd2; color: #b71c1c; }
+        .pill { display: inline-block; margin: 2px; padding: 4px 8px; background: #ebeef0; border-radius: 6px; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+    <h1>Propfolio AU</h1>
+    <p style="color:#43474d; margin-bottom: 20px;">Test console for the MVP backend. <a href="/docs" style="color:#0a6c44;">Swagger UI →</a></p>
+
+    <div class="grid">
+        <!-- Left Column -->
+        <div>
+            <h2>1. Create Property</h2>
+            <div class="card">
+                <label>Short Name</label>
+                <input type="text" id="prop-name" value="12 OHC" />
+                <label>Address</label>
+                <input type="text" id="prop-address" value="12 Ocean Heights Ct, Burleigh QLD 4220" />
+                <label>Purchase Price ($)</label>
+                <input type="number" id="prop-price" value="750000" />
+                <label>Current Value ($)</label>
+                <input type="number" id="prop-value" value="820000" />
+                <button onclick="createProperty()">Create Property</button>
+                <div id="prop-status"></div>
+            </div>
+
+            <h2>2. Upload PDF</h2>
+            <div class="card">
+                <label>Property</label>
+                <select id="prop-select"><option value="">— loading —</option></select>
+                <label>PDF File</label>
+                <input type="file" id="pdf-file" accept=".pdf" />
+                <button onclick="uploadPdf()">Upload & Classify</button>
+                <div id="upload-status"></div>
+            </div>
+
+            <h2>3. Review & Confirm</h2>
+            <div class="card">
+                <div id="pending-items"></div>
+                <div style="margin-top: 8px;">
+                    <button class="secondary" onclick="confirmPending()" id="btn-confirm" style="display:none;">Confirm All</button>
+                    <button class="danger" onclick="discardPending()" id="btn-discard" style="display:none;">Discard</button>
+                </div>
+                <div id="confirm-status"></div>
+            </div>
+        </div>
+
+        <!-- Right Column -->
+        <div>
+            <h2>4. Portfolio Overview</h2>
+            <div class="card">
+                <button onclick="loadPortfolio()">Refresh</button>
+                <div id="portfolio-view" style="margin-top: 12px;"></div>
+            </div>
+
+            <h2>5. Generate Excel Report</h2>
+            <div class="card">
+                <button class="secondary" onclick="generateReport()">Generate P&L Workbook</button>
+                <div id="report-status"></div>
+            </div>
+
+            <h2>6. Property Summary</h2>
+            <div class="card">
+                <label>Property</label>
+                <select id="summary-prop"><option value="">— select —</option></select>
+                <button onclick="loadSummary()">Load Summary</button>
+                <div id="summary-view" style="margin-top: 12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = '';
+        let currentPendingId = null;
+
+        async function createProperty() {
+            const body = {
+                short_name: document.getElementById('prop-name').value,
+                address: document.getElementById('prop-address').value,
+                purchase_price: parseFloat(document.getElementById('prop-price').value) || null,
+                current_value: parseFloat(document.getElementById('prop-value').value) || null,
+            };
+            try {
+                const res = await fetch(`${API}/api/properties/`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                show('prop-status', `Created: ${data.display_name} (${data.id})`, 'success');
+                refreshPropertySelects();
+            } catch (e) {
+                show('prop-status', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function refreshPropertySelects() {
+            try {
+                const res = await fetch(`${API}/api/properties/`);
+                const props = await res.json();
+                const opts = props.map(p => `<option value="${p.id}">${p.display_name}</option>`).join('');
+                document.getElementById('prop-select').innerHTML = opts || '<option>No properties</option>';
+                document.getElementById('summary-prop').innerHTML = opts || '<option>No properties</option>';
+            } catch(e) {}
+        }
+
+        async function uploadPdf() {
+            const propId = document.getElementById('prop-select').value;
+            const fileInput = document.getElementById('pdf-file');
+            if (!propId || !fileInput.files.length) {
+                show('upload-status', 'Select a property and PDF file', 'error');
+                return;
+            }
+            const form = new FormData();
+            form.append('file', fileInput.files[0]);
+
+            show('upload-status', 'Uploading & classifying...', 'info');
+            try {
+                const res = await fetch(`${API}/api/upload/${propId}`, {method: 'POST', body: form});
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+                currentPendingId = data.pending_id;
+                show('upload-status', `Classified ${data.items_count} items from ${data.filename}`, 'success');
+
+                // Show items table
+                let html = '<table><tr><th>Date</th><th>Category</th><th>Amount</th><th>Type</th><th>Conf</th></tr>';
+                for (const item of data.items) {
+                    const conf = item.confidence >= 0.8 ? '🟢' : item.confidence >= 0.5 ? '🟡' : '🔴';
+                    html += `<tr><td>${item.month || item.date}</td><td>${item.category}</td><td>$${Number(item.amount).toFixed(2)}</td><td><span class="badge ${item.type === 'income' ? 'badge-green' : 'badge-red'}">${item.type}</span></td><td>${conf}</td></tr>`;
+                }
+                html += '</table>';
+                document.getElementById('pending-items').innerHTML = html;
+                document.getElementById('btn-confirm').style.display = 'inline-block';
+                document.getElementById('btn-discard').style.display = 'inline-block';
+            } catch (e) {
+                show('upload-status', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function confirmPending() {
+            if (!currentPendingId) return;
+            try {
+                const res = await fetch(`${API}/api/upload/confirm/${currentPendingId}`, {method: 'POST'});
+                const data = await res.json();
+                show('confirm-status', `Confirmed: ${data.added} added, ${data.skipped} skipped`, 'success');
+                currentPendingId = null;
+                document.getElementById('btn-confirm').style.display = 'none';
+                document.getElementById('btn-discard').style.display = 'none';
+            } catch (e) {
+                show('confirm-status', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function discardPending() {
+            if (!currentPendingId) return;
+            try {
+                await fetch(`${API}/api/upload/pending/${currentPendingId}`, {method: 'DELETE'});
+                show('confirm-status', 'Discarded', 'info');
+                currentPendingId = null;
+                document.getElementById('pending-items').innerHTML = '';
+                document.getElementById('btn-confirm').style.display = 'none';
+                document.getElementById('btn-discard').style.display = 'none';
+            } catch(e) {}
+        }
+
+        async function loadPortfolio() {
+            try {
+                const res = await fetch(`${API}/api/portfolio`);
+                const data = await res.json();
+                if (!data.properties.length) {
+                    document.getElementById('portfolio-view').innerHTML = '<p style="color:#757575">No properties yet.</p>';
+                    return;
+                }
+                let html = '<table><tr><th>ID</th><th>Name</th><th>Address</th><th>Purchase</th><th>Value</th></tr>';
+                for (const p of data.properties) {
+                    html += `<tr><td>${p.id}</td><td>${p.short_name}</td><td>${p.address}</td><td>$${(p.purchase_price||0).toLocaleString()}</td><td>$${(p.current_value||0).toLocaleString()}</td></tr>`;
+                }
+                html += '</table>';
+                document.getElementById('portfolio-view').innerHTML = html;
+            } catch(e) {
+                document.getElementById('portfolio-view').innerHTML = `<p class="error">${e.message}</p>`;
+            }
+        }
+
+        async function generateReport() {
+            show('report-status', 'Generating...', 'info');
+            try {
+                const res = await fetch(`${API}/api/reports/generate`);
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Generation failed');
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Propfolio_PnL.xlsx';
+                a.click();
+                show('report-status', 'Downloaded!', 'success');
+            } catch(e) {
+                show('report-status', `Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function loadSummary() {
+            const propId = document.getElementById('summary-prop').value;
+            if (!propId) return;
+            try {
+                const res = await fetch(`${API}/api/properties/${propId}/summary`);
+                const d = await res.json();
+                const gearingClass = d.net_profit >= 0 ? 'success' : 'error';
+                document.getElementById('summary-view').innerHTML = `
+                    <div class="status ${gearingClass}" style="margin-bottom:8px; font-weight:600;">
+                        ${d.gearing} — ${d.gearing_detail}
+                    </div>
+                    <table>
+                        <tr><td>FY</td><td>${d.fy}</td></tr>
+                        <tr><td>Gross Income</td><td style="color:#1b5e20">$${d.income.toFixed(2)}</td></tr>
+                        <tr><td>Operating Expenses</td><td style="color:#b71c1c">$${d.opex.toFixed(2)}</td></tr>
+                        <tr><td><b>NOI</b></td><td><b>$${d.noi.toFixed(2)}</b></td></tr>
+                        <tr><td>Utilities</td><td style="color:#b71c1c">$${d.utilities.toFixed(2)}</td></tr>
+                        <tr><td>Financing</td><td style="color:#b71c1c">$${d.financing.toFixed(2)}</td></tr>
+                        <tr><td>Depreciation</td><td style="color:#b71c1c">$${d.depreciation.toFixed(2)}</td></tr>
+                        <tr><td><b>Net Profit / (Loss)</b></td><td><b>$${d.net_profit.toFixed(2)}</b></td></tr>
+                    </table>
+                `;
+            } catch(e) {
+                document.getElementById('summary-view').innerHTML = `<p class="error">${e.message}</p>`;
+            }
+        }
+
+        function show(id, msg, type) {
+            document.getElementById(id).innerHTML = `<div class="status ${type}">${msg}</div>`;
+        }
+
+        // Init
+        refreshPropertySelects();
+        loadPortfolio();
+    </script>
+</body>
+</html>

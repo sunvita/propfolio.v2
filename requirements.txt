@@ -1,0 +1,8 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+openpyxl==3.1.5
+anthropic==0.43.0
+opendataloader-pdf[hybrid]>=0.9.0
+pydantic==2.10.4
+python-dotenv==1.0.1

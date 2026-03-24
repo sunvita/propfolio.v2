@@ -1,0 +1,35 @@
+{
+  "properties": [
+    {
+      "id": "IP1",
+      "short_name": "12 OHC",
+      "display_name": "IP#1 \u2014 12 OHC",
+      "address": "12 Ocean Heights Ct, Burleigh Heads QLD 4220",
+      "type": "residential",
+      "units": 1,
+      "purchase_price": 750000.00,
+      "purchase_date": "2021-03-15T00:00:00",
+      "current_value": 820000.00,
+      "mortgage_balance": 600000.00,
+      "notes": "3BR townhouse, ocean views"
+    },
+    {
+      "id": "IP2",
+      "short_name": "45 MCR",
+      "display_name": "IP#2 \u2014 45 MCR",
+      "address": "45 Marine Crescent, Robina QLD 4226",
+      "type": "residential",
+      "units": 1,
+      "purchase_price": 550000.00,
+      "purchase_date": "2022-08-01T00:00:00",
+      "current_value": 610000.00,
+      "mortgage_balance": 440000.00,
+      "notes": "2BR apartment"
+    }
+  ],
+  "settings": {
+    "fy_start_month": 7,
+    "currency_symbol": "$",
+    "country": "AU"
+  }
+}
